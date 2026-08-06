@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gift List</title>
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Home screen / installed-app support -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#b8863b" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Gifts" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>Gift List</h1>
+  </header>
+
+  <main>
+    <nav class="app-nav">
+      <a href="/" class="app-nav-link active">
+        <span class="app-nav-icon" aria-hidden="true">🎁</span>
+        Gifts
+      </a>
+      <a href="/contacts.html" class="app-nav-link">
+        <span class="app-nav-icon" aria-hidden="true">👤</span>
+        Contacts
+      </a>
+    </nav>
+
+    <div id="gift-message" class="gift-message hidden"></div>
+
+    <button id="show-add-gift" type="button" class="add-gift-toggle">+ Add Gift</button>
+
+    <form id="new-gift-form" class="gift-card gift-add-card hidden">
+      <div class="field">
+        <label for="new-name">Name <span class="required">*</span></label>
+        <input id="new-name" name="name" type="text" required placeholder="e.g. Wireless earbuds" />
+      </div>
+      <div class="field">
+        <label for="new-recipient">Who is it for?</label>
+        <select id="new-recipient" name="recipient_id">
+          <option value="">Unassigned</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="new-description">Description</label>
+        <textarea id="new-description" name="description" rows="2" placeholder="Optional notes"></textarea>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="new-url">URL</label>
+          <input id="new-url" name="url" type="url" placeholder="https://..." />
+        </div>
+        <div class="field">
+          <label for="new-date">Needed by</label>
+          <input id="new-date" name="needed_by" type="date" />
+        </div>
+      </div>
+      <div class="gift-actions">
+        <button type="submit" class="save-btn">Add gift</button>
+        <button type="button" id="cancel-add-gift" class="cancel-btn">Cancel</button>
+      </div>
+    </form>
+
+    <section>
+      <div class="gifts-header">
+        <h2>Gifts</h2>
+        <span id="gift-count" class="gift-count"></span>
+      </div>
+      <div id="gifts-list" class="gifts-list"></div>
+      <p id="empty-state" class="empty-state" hidden>No gifts yet - add one above to get started.</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

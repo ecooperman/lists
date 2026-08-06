@@ -1,0 +1,13 @@
+[Unit]
+Description=Gift List
+After=network.target
+
+[Service]
+User=deploy
+WorkingDirectory=/opt/apps/gifts
+ExecStart=/opt/apps/gifts/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8030
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

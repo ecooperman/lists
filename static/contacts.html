@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manage Contacts - Gift List</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>Manage Contacts</h1>
+  </header>
+
+  <main>
+    <nav class="app-nav">
+      <a href="/" class="app-nav-link">
+        <span class="app-nav-icon" aria-hidden="true">🎁</span>
+        Gifts
+      </a>
+      <a href="/contacts.html" class="app-nav-link active">
+        <span class="app-nav-icon" aria-hidden="true">👤</span>
+        Contacts
+      </a>
+    </nav>
+
+    <div id="admin-message" class="gift-message hidden"></div>
+
+    <div id="contact-rows"></div>
+
+    <form id="add-contact-form" class="contact-row new-contact-row">
+      <input type="text" id="new-contact-first-name" placeholder="First name" required />
+      <input type="text" id="new-contact-last-name" placeholder="Last name" />
+      <input type="email" id="new-contact-email" placeholder="Email" />
+      <input type="text" id="new-contact-address" placeholder="Address" />
+      <button type="submit">Add contact</button>
+    </form>
+  </main>
+
+  <script src="/contacts.js"></script>
+</body>
+</html>

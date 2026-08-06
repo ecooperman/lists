@@ -1,0 +1,179 @@
+# Gift List
+
+A small local app for keeping a running list of gift ideas so you don't
+forget what to get people - name, description, a source URL (e.g. a product
+page), a date you need it by, and who it's for.
+
+## Run it
+
+```bash
+cd gifts
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+alembic upgrade head
+python -m app.main
+```
+
+Then open http://127.0.0.1:8030 (host/port are set in `app/config.py`).
+
+The SQLite database (`gifts.db`) is not created by the app itself - `alembic
+upgrade head` creates it. This only needs to be run once for a fresh
+install; see below for how schema changes are handled from here on.
+
+## API-first design
+
+The backend (`app/`) is a plain JSON REST API (`/api/gifts`, `/api/contacts`,
+`/docs` for the interactive Swagger UI) with no knowledge of the frontend.
+The frontend (`static/`) is a thin vanilla-JS client with no build step,
+talking to the API over `fetch`. That separation means the backend can be
+tested and used entirely on its own, and the frontend can later be swapped
+for something richer without touching the API.
+
+Gift endpoints:
+
+- `GET /api/gifts` - list all gifts (unpurchased first, then by "needed by"
+  date, then newest first)
+- `POST /api/gifts` - create a gift (`name` is the only required field)
+- `GET /api/gifts/{id}` - fetch one gift
+- `PATCH /api/gifts/{id}` - update any subset of fields, including
+  `recipient_id` and `purchased` (send `null`/`false` to clear them)
+- `DELETE /api/gifts/{id}` - delete a gift
+- `POST /api/gifts/{id}/scrape` - (re-)run the scraper for the gift's URL and
+  persist the result onto the gift
+
+Contact endpoints (the "who is it for" list, managed on `/contacts.html`):
+
+- `GET /api/contacts` - list all contacts
+- `POST /api/contacts` - create a contact (`first_name` is the only required
+  field; `last_name`, `email`, `address` are optional)
+- `PATCH /api/contacts/{id}` - update any subset of fields
+- `DELETE /api/contacts/{id}` - delete a contact (409s if any gift is still
+  assigned to them - reassign or delete those gifts first)
+
+## Schema changes (Alembic)
+
+Schema is owned by migrations under `migrations/versions/`, not by wiping
+`gifts.db`. To change the schema:
+
+```bash
+# 1. Edit app/models.py as usual
+# 2. Generate a migration from the diff
+alembic revision --autogenerate -m "short description"
+# 3. Look over the generated file in migrations/versions/ - autogenerate
+#    is good but not infallible (e.g. it won't detect a plain column rename
+#    on its own)
+# 4. Apply it
+alembic upgrade head
+```
+
+This preserves existing data. Useful commands: `alembic current` (what
+revision the db is at), `alembic check` (does the db match `models.py`
+right now), `alembic downgrade -1` (undo the last migration).
+
+SQLite can't `ALTER TABLE` to add a constraint directly, so
+`migrations/env.py` has `render_as_batch=True` set, which makes autogenerate
+wrap those changes in `op.batch_alter_table(...)` (SQLite rebuilds the table
+under the hood). If autogenerate produces a `batch_op.create_foreign_key(None,
+...)` / `drop_constraint(None, ...)` call, give it an explicit name in both
+`upgrade()` and `downgrade()` - SQLite's batch mode needs a name to
+reference, and will fail with `ValueError: Constraint must have a name`
+otherwise.
+
+## Upgrading to Postgres later
+
+Everything goes through SQLAlchemy + Alembic, so moving off SQLite is mostly
+a matter of swapping `DATABASE_URL` in `app/database.py` (and
+`sqlalchemy.url` in `alembic.ini`) for a Postgres connection string,
+installing a driver (`psycopg`), and running `alembic upgrade head` against
+the new database - no application code depends on SQLite specifics.
+
+## Scraping framework
+
+`app/scraping/` holds the strategy framework for pulling a title, description,
+and image out of a gift's URL:
+
+- `base.py` - `ScraperStrategy` interface (`matches(url)` / `scrape(url)`)
+  and the `ScrapedContent` result shape
+- `og_tags.py` - shared helper that fetches a page and reads its Open Graph
+  meta tags (`og:title`, `og:description`, `og:image`); takes a
+  `user_agent` override since Instagram/Facebook need a crawler UA to serve
+  their server-rendered markup, while most other sites (retailers, in
+  particular) just want a normal browser UA
+- `instagram.py`, `facebook.py` - social-post strategies, matching on
+  hostname and delegating to `og_tags` with the crawler UA
+- `generic.py` - catch-all fallback for everything else (most gift links are
+  ordinary retailer product pages), delegating to `og_tags` with a normal
+  browser UA
+- `registry.py` - picks the first strategy whose `matches()` returns true
+  for a given URL; `generic.py` is registered last since it matches
+  everything
+- `service.py` - orchestrates a scrape and persists the outcome (success,
+  failed, or unsupported) onto the gift via `crud.save_scrape_result`
+
+Adding support for a site that needs special handling later is just a new
+`ScraperStrategy` subclass registered ahead of `GenericScraper` in
+`registry.py`.
+
+Note: some sites (Instagram/Facebook among them) gate content behind a login
+wall or block automated requests outright, so a scrape can legitimately come
+back `failed` even though a strategy matched. That's surfaced back to the UI
+rather than treated as a crash - scraping is a nice-to-have on top of the
+manually-entered fields, never a requirement.
+
+## Deploying
+
+Runs as a systemd service on the Digital Ocean droplet, reached through a
+Cloudflare Tunnel (no inbound ports opened on the droplet) and gated by
+Cloudflare Access - see `deploy/gifts.service`.
+
+One-time setup on the droplet:
+
+```bash
+sudo mkdir -p /opt/apps/gifts && sudo chown deploy:deploy /opt/apps/gifts
+# as the deploy user:
+git clone https://github.com/ecooperman/gifts.git /opt/apps/gifts
+cd /opt/apps/gifts
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+alembic upgrade head
+sudo cp deploy/gifts.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now gifts
+```
+
+Then add an ingress entry for `127.0.0.1:8030` to `/etc/cloudflared/config.yml`,
+route DNS for its hostname (`cloudflared tunnel route dns <tunnel-name>
+<hostname>`), and add a Cloudflare Access policy for that hostname.
+
+Ongoing deploys are automatic: `.github/workflows/deploy.yml` runs on every
+push to `main` - it SSHes in, pulls, reinstalls dependencies, runs `alembic
+upgrade head`, and restarts the service. Needs these repo secrets set once
+(Settings -> Secrets and variables -> Actions): `DO_HOST`, `DO_USER` (the
+`deploy` user), `DO_SSH_KEY` (that user's private key).
+
+## Notes
+
+- Only `name` is required on a gift - everything else (recipient,
+  description, URL, needed-by date) is optional and can be filled in later.
+- Gifts are collapsed-by-default accordion cards - the same pattern as the
+  jobs admin page in time-management (`jobs.html`/`jobs.js`): a single-line
+  summary (name, recipient, source domain, date) that expands in place into
+  the full edit form, rather than a separate view/edit mode or a modal. This
+  keeps a long list scannable while still making every field editable.
+- "Add Gift" is a toggle button that reveals an inline add form (again
+  mirroring the jobs admin page's "+ Add New Job Opportunity"), not a modal.
+- Each gift has a checkbox in its summary row to mark it purchased without
+  expanding the card - purchased gifts sort to the bottom of the list and
+  show with a struck-through name. `purchased_at` is recorded automatically
+  when the checkbox is checked (and cleared if unchecked).
+- "Who is it for?" is a dropdown of contacts, not a free-text field -
+  contacts are managed separately on `/contacts.html` (linked from the nav
+  bar), the same "categories" pattern used in time-management. Only
+  `first_name` is required on a contact; `last_name`, `email`, and `address`
+  are optional. A contact can't be deleted while a gift still references
+  them (409, mirroring the category-in-use check in time-management).
+- The "Fetch preview" button only appears when a gift has a URL, and calls
+  `POST /api/gifts/{id}/scrape`. It can be re-run any time (e.g. after a
+  transient failure) via "Re-fetch preview", and lives inside the expanded
+  card alongside the scraped preview (if any).
