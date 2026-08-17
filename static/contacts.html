@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Manage Contacts - Gift List</title>
+  <link rel="stylesheet" href="https://static.evancooperman.com/theme.css" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -14,16 +15,20 @@
   <main>
     <nav class="app-nav">
       <a href="/" class="app-nav-link">
-        <span class="app-nav-icon" aria-hidden="true">🎁</span>
+        <span class="app-nav-icon" aria-hidden="true" data-icon="gift"></span>
         Gifts
       </a>
       <a href="/contacts.html" class="app-nav-link active">
-        <span class="app-nav-icon" aria-hidden="true">👤</span>
+        <span class="app-nav-icon" aria-hidden="true" data-icon="person"></span>
         Contacts
       </a>
+      <button type="button" class="app-nav-link" onclick="location.reload()">
+        <span class="app-nav-icon" aria-hidden="true" data-icon="refresh"></span>
+        Refresh
+      </button>
     </nav>
 
-    <div id="admin-message" class="gift-message hidden"></div>
+    <div id="page-message" class="page-message hidden"></div>
 
     <div id="contact-rows"></div>
 
@@ -36,6 +41,8 @@
     </form>
   </main>
 
+  <script src="https://static.evancooperman.com/theme.js"></script>
+  <script src="https://static.evancooperman.com/icons.js"></script>
   <script src="/contacts.js"></script>
 </body>
 </html>

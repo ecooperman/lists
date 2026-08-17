@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gift List</title>
+  <link rel="stylesheet" href="https://static.evancooperman.com/theme.css" />
   <link rel="stylesheet" href="style.css" />
 
   <!-- Home screen / installed-app support -->
@@ -22,20 +23,24 @@
   <main>
     <nav class="app-nav">
       <a href="/" class="app-nav-link active">
-        <span class="app-nav-icon" aria-hidden="true">🎁</span>
+        <span class="app-nav-icon" aria-hidden="true" data-icon="gift"></span>
         Gifts
       </a>
       <a href="/contacts.html" class="app-nav-link">
-        <span class="app-nav-icon" aria-hidden="true">👤</span>
+        <span class="app-nav-icon" aria-hidden="true" data-icon="person"></span>
         Contacts
       </a>
+      <button type="button" class="app-nav-link" onclick="location.reload()">
+        <span class="app-nav-icon" aria-hidden="true" data-icon="refresh"></span>
+        Refresh
+      </button>
     </nav>
 
-    <div id="gift-message" class="gift-message hidden"></div>
+    <div id="page-message" class="page-message hidden"></div>
 
-    <button id="show-add-gift" type="button" class="add-gift-toggle">+ Add Gift</button>
+    <button id="show-add-gift" type="button" class="add-toggle">+ Add Gift</button>
 
-    <form id="new-gift-form" class="gift-card gift-add-card hidden">
+    <form id="new-gift-form" class="add-card hidden">
       <div class="field">
         <label for="new-name">Name <span class="required">*</span></label>
         <input id="new-name" name="name" type="text" required placeholder="e.g. Wireless earbuds" />
@@ -60,22 +65,24 @@
           <input id="new-date" name="needed_by" type="date" />
         </div>
       </div>
-      <div class="gift-actions">
+      <div class="item-actions">
         <button type="submit" class="save-btn">Add gift</button>
         <button type="button" id="cancel-add-gift" class="cancel-btn">Cancel</button>
       </div>
     </form>
 
     <section>
-      <div class="gifts-header">
+      <div class="list-header">
         <h2>Gifts</h2>
-        <span id="gift-count" class="gift-count"></span>
+        <span id="gift-count" class="list-count"></span>
       </div>
-      <div id="gifts-list" class="gifts-list"></div>
+      <div id="gifts-list" class="item-list"></div>
       <p id="empty-state" class="empty-state" hidden>No gifts yet - add one above to get started.</p>
     </section>
   </main>
 
+  <script src="https://static.evancooperman.com/theme.js"></script>
+  <script src="https://static.evancooperman.com/icons.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

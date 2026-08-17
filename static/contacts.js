@@ -16,13 +16,6 @@ async function fetchJSON(url, options) {
   return res.json();
 }
 
-function showMessage(text, kind) {
-  const el = document.getElementById("admin-message");
-  el.textContent = text;
-  el.className = "gift-message " + kind;
-  setTimeout(() => el.classList.add("hidden"), 4000);
-}
-
 function contactDisplayName(contact) {
   return [contact.first_name, contact.last_name].filter(Boolean).join(" ");
 }
@@ -58,7 +51,7 @@ function contactRowElement(contact) {
   saveBtn.addEventListener("click", async () => {
     const firstName = firstNameInput.value.trim();
     if (!firstName) {
-      showMessage("First name is required.", "error");
+      Theme.showMessage("First name is required.", "error");
       return;
     }
     try {
@@ -72,10 +65,10 @@ function contactRowElement(contact) {
           address: addressInput.value.trim() || null,
         }),
       });
-      showMessage(`Saved "${firstName}".`, "success");
+      Theme.showMessage(`Saved "${firstName}".`, "success");
       loadContacts();
     } catch (err) {
-      showMessage(err.message, "error");
+      Theme.showMessage(err.message, "error");
     }
   });
 
@@ -87,10 +80,10 @@ function contactRowElement(contact) {
     if (!confirm(`Delete contact "${contactDisplayName(contact)}"?`)) return;
     try {
       await fetchJSON(`/api/contacts/${contact.id}`, { method: "DELETE" });
-      showMessage(`Deleted "${contactDisplayName(contact)}".`, "success");
+      Theme.showMessage(`Deleted "${contactDisplayName(contact)}".`, "success");
       loadContacts();
     } catch (err) {
-      showMessage(err.message, "error");
+      Theme.showMessage(err.message, "error");
     }
   });
 
@@ -136,10 +129,10 @@ function initAddForm() {
       lastNameInput.value = "";
       emailInput.value = "";
       addressInput.value = "";
-      showMessage("Contact added.", "success");
+      Theme.showMessage("Contact added.", "success");
       loadContacts();
     } catch (err) {
-      showMessage(err.message, "error");
+      Theme.showMessage(err.message, "error");
     }
   });
 }

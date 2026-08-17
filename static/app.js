@@ -20,14 +20,6 @@ async function fetchJSON(url, options) {
   return res.json();
 }
 
-function showMessage(text, kind) {
-  const el = document.getElementById("gift-message");
-  el.textContent = text;
-  el.className = "gift-message " + kind;
-  clearTimeout(showMessage._t);
-  showMessage._t = setTimeout(() => el.classList.add("hidden"), 4000);
-}
-
 function toISODate(isoDateTime) {
   if (!isoDateTime) return "";
   return isoDateTime.slice(0, 10);
@@ -52,27 +44,13 @@ function contactName(contact) {
   return [contact.first_name, contact.last_name].filter(Boolean).join(" ");
 }
 
-function el(tag, attrs = {}, children = []) {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (key === "class") node.className = value;
-    else if (key === "text") node.textContent = value;
-    else if (key.startsWith("on") && typeof value === "function") node.addEventListener(key.slice(2), value);
-    else if (value !== null && value !== undefined) node.setAttribute(key, value);
-  }
-  for (const child of [].concat(children)) {
-    if (child) node.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
-  }
-  return node;
-}
-
 // --- contacts (for the "who is it for" dropdowns) ---
 
 function populateRecipientSelect(select, selectedId) {
   select.innerHTML = "";
-  select.appendChild(el("option", { value: "", text: "Unassigned" }));
+  select.appendChild(Theme.el("option", { value: "", text: "Unassigned" }));
   for (const contact of contacts) {
-    const option = el("option", { value: String(contact.id), text: contactName(contact) });
+    const option = Theme.el("option", { value: String(contact.id), text: contactName(contact) });
     if (selectedId && Number(selectedId) === contact.id) option.selected = true;
     select.appendChild(option);
   }
@@ -111,14 +89,14 @@ function renderGifts(gifts) {
 // solves the same "lots of rows, only show the full form for the one you're
 // touching" problem the same way.
 function giftCardElement(gift, { expanded = false } = {}) {
-  const card = el("div", {
-    class: "gift-card" + (expanded ? " expanded" : "") + (gift.purchased ? " purchased" : ""),
+  const card = Theme.el("div", {
+    class: "item-card" + (expanded ? " expanded" : "") + (gift.purchased ? " done" : ""),
     "data-id": gift.id,
   });
 
-  const summary = el("button", { type: "button", class: "gift-summary", "aria-expanded": String(expanded) });
+  const summary = Theme.el("button", { type: "button", class: "item-summary", "aria-expanded": String(expanded) });
 
-  const purchasedCheckbox = el("input", { type: "checkbox", class: "gift-purchased-toggle", "aria-label": "Mark purchased" });
+  const purchasedCheckbox = Theme.el("input", { type: "checkbox", class: "item-summary-done-toggle", "aria-label": "Mark purchased" });
   purchasedCheckbox.checked = !!gift.purchased;
   purchasedCheckbox.addEventListener("click", (e) => e.stopPropagation());
   purchasedCheckbox.addEventListener("change", async () => {
@@ -134,22 +112,22 @@ function giftCardElement(gift, { expanded = false } = {}) {
       loadGifts();
     } catch (err) {
       purchasedCheckbox.checked = !purchasedCheckbox.checked;
-      showMessage(err.message, "error");
+      Theme.showMessage(err.message, "error");
     }
   });
   summary.appendChild(purchasedCheckbox);
 
-  summary.appendChild(el("span", { class: "gift-summary-title", text: gift.name }));
+  summary.appendChild(Theme.el("span", { class: "item-summary-title", text: gift.name }));
 
   const recipient = gift.recipient ? contactName(gift.recipient) : null;
   if (recipient) {
-    summary.appendChild(el("span", { class: "gift-summary-recipient", text: recipient }));
+    summary.appendChild(Theme.el("span", { class: "item-badge item-badge-accent", text: recipient }));
   }
 
   const domain = gift.url ? domainFromUrl(gift.url) : null;
   if (domain) {
-    const domainLink = el("a", {
-      class: "gift-summary-domain",
+    const domainLink = Theme.el("a", {
+      class: "item-badge item-badge-domain",
       href: gift.url,
       target: "_blank",
       rel: "noopener noreferrer",
@@ -162,18 +140,14 @@ function giftCardElement(gift, { expanded = false } = {}) {
 
   const dateLabel = formatDateBadge(gift.needed_by);
   if (dateLabel) {
-    summary.appendChild(el("span", { class: "gift-summary-date", text: dateLabel }));
+    summary.appendChild(Theme.el("span", { class: "item-badge item-badge-date", text: dateLabel }));
   }
 
-  summary.appendChild(el("span", { class: "gift-chevron", "aria-hidden": "true", text: "▸" }));
+  summary.appendChild(Theme.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
 
-  const details = el("div", { class: "gift-details" + (expanded ? "" : " hidden") });
+  const details = Theme.el("div", { class: "item-details" + (expanded ? "" : " hidden") });
 
-  summary.addEventListener("click", () => {
-    const isExpanded = card.classList.toggle("expanded");
-    details.classList.toggle("hidden", !isExpanded);
-    summary.setAttribute("aria-expanded", String(isExpanded));
-  });
+  Theme.wireAccordionToggle(card, summary, details);
 
   card.append(summary, details);
   details.appendChild(buildGiftDetails(card, gift));
@@ -181,22 +155,22 @@ function giftCardElement(gift, { expanded = false } = {}) {
 }
 
 function buildGiftDetails(card, gift) {
-  const wrap = el("div", { class: "gift-details-inner" });
+  const wrap = Theme.el("div", { class: "item-details-inner" });
 
-  const nameInput = el("input", { type: "text", value: gift.name, required: "required" });
-  const recipientSelect = el("select", {});
+  const nameInput = Theme.el("input", { type: "text", value: gift.name, required: "required" });
+  const recipientSelect = Theme.el("select", {});
   populateRecipientSelect(recipientSelect, gift.recipient_id);
-  const descInput = el("textarea", { rows: "2" });
+  const descInput = Theme.el("textarea", { rows: "2" });
   descInput.value = gift.description || "";
-  const urlInput = el("input", { type: "url", value: gift.url || "" });
-  const dateInput = el("input", { type: "date", value: toISODate(gift.needed_by) });
+  const urlInput = Theme.el("input", { type: "url", value: gift.url || "" });
+  const dateInput = Theme.el("input", { type: "date", value: toISODate(gift.needed_by) });
 
-  const fields = el("div", { class: "gift-fields" }, [
-    el("div", { class: "field" }, [el("label", { text: "Name" }), nameInput]),
-    el("div", { class: "field" }, [el("label", { text: "Who is it for?" }), recipientSelect]),
-    el("div", { class: "field" }, [el("label", { text: "Description" }), descInput]),
-    el("div", { class: "field" }, [el("label", { text: "URL" }), urlInput]),
-    el("div", { class: "field" }, [el("label", { text: "Needed by" }), dateInput]),
+  const fields = Theme.el("div", { class: "item-fields" }, [
+    Theme.el("div", { class: "field" }, [Theme.el("label", { text: "Name" }), nameInput]),
+    Theme.el("div", { class: "field" }, [Theme.el("label", { text: "Who is it for?" }), recipientSelect]),
+    Theme.el("div", { class: "field" }, [Theme.el("label", { text: "Description" }), descInput]),
+    Theme.el("div", { class: "field" }, [Theme.el("label", { text: "URL" }), urlInput]),
+    Theme.el("div", { class: "field" }, [Theme.el("label", { text: "Needed by" }), dateInput]),
   ]);
   wrap.appendChild(fields);
 
@@ -204,9 +178,9 @@ function buildGiftDetails(card, gift) {
     wrap.appendChild(buildScrapeSection(card, gift));
   }
 
-  const actions = el("div", { class: "gift-actions" });
+  const actions = Theme.el("div", { class: "item-actions" });
 
-  const deleteBtn = el("button", {
+  const deleteBtn = Theme.el("button", {
     type: "button",
     class: "danger-btn",
     text: "Delete",
@@ -214,19 +188,19 @@ function buildGiftDetails(card, gift) {
       if (!confirm(`Delete "${gift.name}"?`)) return;
       await fetchJSON(`${API_BASE}/${gift.id}`, { method: "DELETE" });
       card.remove();
-      showMessage(`Deleted "${gift.name}".`, "success");
+      Theme.showMessage(`Deleted "${gift.name}".`, "success");
       loadGifts();
     },
   });
 
-  const saveBtn = el("button", {
+  const saveBtn = Theme.el("button", {
     type: "button",
     class: "save-btn",
     text: "Save",
     onclick: async () => {
       const name = nameInput.value.trim();
       if (!name) {
-        showMessage("Name is required.", "error");
+        Theme.showMessage("Name is required.", "error");
         return;
       }
       try {
@@ -241,10 +215,10 @@ function buildGiftDetails(card, gift) {
             needed_by: dateInput.value ? `${dateInput.value}T00:00:00` : null,
           }),
         });
-        showMessage(`Saved "${name}".`, "success");
+        Theme.showMessage(`Saved "${name}".`, "success");
         card.replaceWith(giftCardElement(updated, { expanded: true }));
       } catch (err) {
-        showMessage(err.message, "error");
+        Theme.showMessage(err.message, "error");
       }
     },
   });
@@ -255,9 +229,9 @@ function buildGiftDetails(card, gift) {
 }
 
 function buildScrapeSection(card, gift) {
-  const section = el("div", { class: "gift-scrape-section" });
+  const section = Theme.el("div", { class: "scrape-section" });
 
-  const scrapeBtn = el("button", {
+  const scrapeBtn = Theme.el("button", {
     type: "button",
     class: "scrape-btn",
     text: gift.scrape_status === "not_started" ? "Fetch preview" : "Re-fetch preview",
@@ -270,7 +244,7 @@ function buildScrapeSection(card, gift) {
       } catch (err) {
         e.target.disabled = false;
         e.target.textContent = "Fetch preview";
-        showMessage(`Preview fetch failed: ${err.message}`, "error");
+        Theme.showMessage(`Preview fetch failed: ${err.message}`, "error");
       }
     },
   });
@@ -281,23 +255,23 @@ function buildScrapeSection(card, gift) {
 
 function renderScrapeStatus(gift) {
   if (gift.scrape_status === "success") {
-    const preview = el("div", { class: "scrape-preview" });
+    const preview = Theme.el("div", { class: "scrape-preview" });
     if (gift.scraped_image_url) {
-      preview.appendChild(el("img", { src: gift.scraped_image_url, class: "scrape-image", alt: "" }));
+      preview.appendChild(Theme.el("img", { src: gift.scraped_image_url, class: "scrape-image", alt: "" }));
     }
-    const textWrap = el("div", { class: "scrape-text" });
-    if (gift.scraped_title) textWrap.appendChild(el("div", { class: "scrape-title", text: gift.scraped_title }));
-    if (gift.scraped_description) textWrap.appendChild(el("div", { class: "scrape-description", text: gift.scraped_description }));
+    const textWrap = Theme.el("div", { class: "scrape-text" });
+    if (gift.scraped_title) textWrap.appendChild(Theme.el("div", { class: "scrape-title", text: gift.scraped_title }));
+    if (gift.scraped_description) textWrap.appendChild(Theme.el("div", { class: "scrape-description", text: gift.scraped_description }));
     preview.appendChild(textWrap);
     return preview;
   }
   if (gift.scrape_status === "failed") {
-    return el("div", { class: "scrape-note scrape-error", text: `Preview fetch failed: ${gift.scrape_error || "unknown error"}` });
+    return Theme.el("div", { class: "scrape-note scrape-error", text: `Preview fetch failed: ${gift.scrape_error || "unknown error"}` });
   }
   if (gift.scrape_status === "unsupported") {
-    return el("div", { class: "scrape-note", text: "No scraper available for this URL yet." });
+    return Theme.el("div", { class: "scrape-note", text: "No scraper available for this URL yet." });
   }
-  return el("div", { class: "scrape-note", text: "" });
+  return Theme.el("div", { class: "scrape-note", text: "" });
 }
 
 function initAddGiftForm() {
@@ -337,10 +311,10 @@ function initAddGiftForm() {
       form.reset();
       form.classList.add("hidden");
       showBtn.classList.remove("hidden");
-      showMessage(`Added "${name}".`, "success");
+      Theme.showMessage(`Added "${name}".`, "success");
       loadGifts();
     } catch (err) {
-      showMessage(err.message, "error");
+      Theme.showMessage(err.message, "error");
     }
   });
 }
