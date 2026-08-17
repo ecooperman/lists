@@ -2,4 +2,5 @@ venv/
 __pycache__/
 *.pyc
 gifts.db
+gifts.db.bak
 .DS_Store
