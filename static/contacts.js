@@ -1,21 +1,3 @@
-async function fetchJSON(url, options) {
-  const res = await fetch(url, options);
-  if (!res.ok) {
-    let detail = `${url} -> ${res.status}`;
-    try {
-      const body = await res.json();
-      if (body.detail) detail = body.detail;
-    } catch (e) {
-      // ignore, use default detail
-    }
-    const err = new Error(detail);
-    err.status = res.status;
-    throw err;
-  }
-  if (res.status === 204) return null;
-  return res.json();
-}
-
 function contactDisplayName(contact) {
   return [contact.first_name, contact.last_name].filter(Boolean).join(" ");
 }
@@ -51,11 +33,11 @@ function contactRowElement(contact) {
   saveBtn.addEventListener("click", async () => {
     const firstName = firstNameInput.value.trim();
     if (!firstName) {
-      Theme.showMessage("First name is required.", "error");
+      Global.showMessage("First name is required.", "error");
       return;
     }
     try {
-      await fetchJSON(`/api/contacts/${contact.id}`, {
+      await Global.fetchJSON(`/api/contacts/${contact.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -65,10 +47,10 @@ function contactRowElement(contact) {
           address: addressInput.value.trim() || null,
         }),
       });
-      Theme.showMessage(`Saved "${firstName}".`, "success");
+      Global.showMessage(`Saved "${firstName}".`, "success");
       loadContacts();
     } catch (err) {
-      Theme.showMessage(err.message, "error");
+      Global.showMessage(err.message, "error");
     }
   });
 
@@ -79,11 +61,11 @@ function contactRowElement(contact) {
   deleteBtn.addEventListener("click", async () => {
     if (!confirm(`Delete contact "${contactDisplayName(contact)}"?`)) return;
     try {
-      await fetchJSON(`/api/contacts/${contact.id}`, { method: "DELETE" });
-      Theme.showMessage(`Deleted "${contactDisplayName(contact)}".`, "success");
+      await Global.fetchJSON(`/api/contacts/${contact.id}`, { method: "DELETE" });
+      Global.showMessage(`Deleted "${contactDisplayName(contact)}".`, "success");
       loadContacts();
     } catch (err) {
-      Theme.showMessage(err.message, "error");
+      Global.showMessage(err.message, "error");
     }
   });
 
@@ -97,7 +79,7 @@ function contactRowElement(contact) {
 }
 
 async function loadContacts() {
-  const contacts = await fetchJSON("/api/contacts");
+  const contacts = await Global.fetchJSON("/api/contacts");
   const container = document.getElementById("contact-rows");
   container.innerHTML = "";
   for (const contact of contacts) {
@@ -115,7 +97,7 @@ function initAddForm() {
     const firstName = firstNameInput.value.trim();
     if (!firstName) return;
     try {
-      await fetchJSON("/api/contacts", {
+      await Global.fetchJSON("/api/contacts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -129,10 +111,10 @@ function initAddForm() {
       lastNameInput.value = "";
       emailInput.value = "";
       addressInput.value = "";
-      Theme.showMessage("Contact added.", "success");
+      Global.showMessage("Contact added.", "success");
       loadContacts();
     } catch (err) {
-      Theme.showMessage(err.message, "error");
+      Global.showMessage(err.message, "error");
     }
   });
 }
