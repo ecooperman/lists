@@ -30,7 +30,32 @@ class Contact(ContactBase):
     id: int
 
 
-class GiftBase(BaseModel):
+class ItemListBase(BaseModel):
+    name: str
+    purpose: Optional[str] = None
+
+
+class ItemListCreate(ItemListBase):
+    pass
+
+
+class ItemListUpdate(BaseModel):
+    name: Optional[str] = None
+    purpose: Optional[str] = None
+
+
+class ItemList(ItemListBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+    # Not columns - crud.attach_counts() sets these on each row so the lists
+    # index can show "N left" without a request per list.
+    item_count: int = 0
+    open_count: int = 0
+
+
+class ItemBase(BaseModel):
     name: str
     description: Optional[str] = None
     url: Optional[str] = None
@@ -38,25 +63,29 @@ class GiftBase(BaseModel):
     recipient_id: Optional[int] = None
 
 
-class GiftCreate(GiftBase):
+class ItemCreate(ItemBase):
     pass
 
 
-class GiftUpdate(BaseModel):
+class ItemUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     url: Optional[str] = None
     needed_by: Optional[datetime] = None
     recipient_id: Optional[int] = None
-    purchased: Optional[bool] = None
+    done: Optional[bool] = None
+    # Moves the item to another list. Can't be cleared - every item belongs
+    # to exactly one list (the router rejects an explicit null).
+    list_id: Optional[int] = None
 
 
-class Gift(GiftBase):
+class Item(ItemBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    purchased: bool
-    purchased_at: Optional[datetime] = None
+    list_id: int
+    done: bool
+    done_at: Optional[datetime] = None
     recipient: Optional[Contact] = None
     scrape_status: ScrapeStatus
     scraped_title: Optional[str] = None

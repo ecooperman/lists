@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session, joinedload
 
 from . import models, schemas
@@ -40,7 +41,7 @@ def delete_contact(db: Session, contact_id: int) -> str:
     db_contact = get_contact(db, contact_id)
     if db_contact is None:
         return "not_found"
-    still_in_use = db.query(models.Gift).filter(models.Gift.recipient_id == contact_id).first()
+    still_in_use = db.query(models.Item).filter(models.Item.recipient_id == contact_id).first()
     if still_in_use is not None:
         return "in_use"
     db.delete(db_contact)
@@ -48,83 +49,146 @@ def delete_contact(db: Session, contact_id: int) -> str:
     return "ok"
 
 
-# --- gifts ---
+# --- lists ---
 
 
-def get_gifts(db: Session):
+def attach_counts(db: Session, lists):
+    """Set item_count/open_count on each list (see schemas.ItemList)."""
+    counts = {
+        list_id: (total, open_)
+        for list_id, total, open_ in db.query(
+            models.Item.list_id,
+            func.count(models.Item.id),
+            func.coalesce(func.sum(case((models.Item.done.is_(False), 1), else_=0)), 0),
+        ).group_by(models.Item.list_id)
+    }
+    for item_list in lists:
+        item_list.item_count, item_list.open_count = counts.get(item_list.id, (0, 0))
+    return lists
+
+
+def get_lists(db: Session):
+    rows = db.query(models.ItemList).order_by(models.ItemList.name).all()
+    return attach_counts(db, rows)
+
+
+def get_list(db: Session, list_id: int):
+    row = db.query(models.ItemList).filter(models.ItemList.id == list_id).first()
+    if row is not None:
+        attach_counts(db, [row])
+    return row
+
+
+def create_list(db: Session, item_list: schemas.ItemListCreate):
+    db_list = models.ItemList(**item_list.model_dump())
+    db.add(db_list)
+    db.commit()
+    db.refresh(db_list)
+    return attach_counts(db, [db_list])[0]
+
+
+def update_list(db: Session, list_id: int, updates: schemas.ItemListUpdate):
+    db_list = get_list(db, list_id)
+    if db_list is None:
+        return None
+    for field, value in updates.model_dump(exclude_unset=True).items():
+        setattr(db_list, field, value)
+    db.commit()
+    db.refresh(db_list)
+    return attach_counts(db, [db_list])[0]
+
+
+def delete_list(db: Session, list_id: int) -> str:
+    db_list = get_list(db, list_id)
+    if db_list is None:
+        return "not_found"
+    # Same guard as delete_contact: never silently cascade-delete someone's
+    # items. Move them to another list (or delete them) first.
+    if db_list.item_count:
+        return "in_use"
+    db.delete(db_list)
+    db.commit()
+    return "ok"
+
+
+# --- items ---
+
+
+def get_items(db: Session, list_id: int):
     return (
-        db.query(models.Gift)
-        .options(joinedload(models.Gift.recipient))
+        db.query(models.Item)
+        .options(joinedload(models.Item.recipient))
+        .filter(models.Item.list_id == list_id)
         .order_by(
-            models.Gift.purchased,
-            models.Gift.needed_by.is_(None),
-            models.Gift.needed_by,
-            models.Gift.created_at.desc(),
+            models.Item.done,
+            models.Item.needed_by.is_(None),
+            models.Item.needed_by,
+            models.Item.created_at.desc(),
         )
         .all()
     )
 
 
-def get_gift(db: Session, gift_id: int):
+def get_item(db: Session, item_id: int):
     return (
-        db.query(models.Gift)
-        .options(joinedload(models.Gift.recipient))
-        .filter(models.Gift.id == gift_id)
+        db.query(models.Item)
+        .options(joinedload(models.Item.recipient))
+        .filter(models.Item.id == item_id)
         .first()
     )
 
 
-def create_gift(db: Session, gift: schemas.GiftCreate):
-    db_gift = models.Gift(**gift.model_dump())
-    db.add(db_gift)
+def create_item(db: Session, list_id: int, item: schemas.ItemCreate):
+    db_item = models.Item(list_id=list_id, **item.model_dump())
+    db.add(db_item)
     db.commit()
-    db.refresh(db_gift)
-    return db_gift
+    db.refresh(db_item)
+    return db_item
 
 
-def update_gift(db: Session, gift_id: int, updates: schemas.GiftUpdate):
-    db_gift = get_gift(db, gift_id)
-    if db_gift is None:
+def update_item(db: Session, item_id: int, updates: schemas.ItemUpdate):
+    db_item = get_item(db, item_id)
+    if db_item is None:
         return None
     fields = updates.model_dump(exclude_unset=True)
-    if "purchased" in fields:
-        # Track when a gift was marked purchased so the UI can show it,
-        # and clear it again if someone un-checks the box.
-        db_gift.purchased_at = datetime.utcnow() if fields["purchased"] else None
+    if "done" in fields:
+        # Track when an item was checked off so the UI can show it, and
+        # clear it again if someone un-checks the box.
+        db_item.done_at = datetime.utcnow() if fields["done"] else None
     for field, value in fields.items():
-        setattr(db_gift, field, value)
+        setattr(db_item, field, value)
     db.commit()
-    db.refresh(db_gift)
-    return db_gift
+    db.refresh(db_item)
+    return db_item
 
 
-def delete_gift(db: Session, gift_id: int) -> bool:
-    db_gift = get_gift(db, gift_id)
-    if db_gift is None:
+def delete_item(db: Session, item_id: int) -> bool:
+    db_item = get_item(db, item_id)
+    if db_item is None:
         return False
-    db.delete(db_gift)
+    db.delete(db_item)
     db.commit()
     return True
 
 
 def save_scrape_result(
     db: Session,
-    gift_id: int,
+    item_id: int,
     status: models.ScrapeStatus,
     title: Optional[str] = None,
     description: Optional[str] = None,
     image_url: Optional[str] = None,
     error: Optional[str] = None,
 ):
-    db_gift = get_gift(db, gift_id)
-    if db_gift is None:
+    db_item = get_item(db, item_id)
+    if db_item is None:
         return None
-    db_gift.scrape_status = status
-    db_gift.scraped_title = title
-    db_gift.scraped_description = description
-    db_gift.scraped_image_url = image_url
-    db_gift.scrape_error = error
-    db_gift.scraped_at = datetime.utcnow()
+    db_item.scrape_status = status
+    db_item.scraped_title = title
+    db_item.scraped_description = description
+    db_item.scraped_image_url = image_url
+    db_item.scrape_error = error
+    db_item.scraped_at = datetime.utcnow()
     db.commit()
-    db.refresh(db_gift)
-    return db_gift
+    db.refresh(db_item)
+    return db_item

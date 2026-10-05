@@ -33,5 +33,5 @@ def delete_contact(contact_id: int, db: Session = Depends(get_db)):
     if result == "not_found":
         raise HTTPException(status_code=404, detail="Contact not found")
     if result == "in_use":
-        raise HTTPException(status_code=409, detail="Contact still has gifts assigned to them")
+        raise HTTPException(status_code=409, detail="Contact still has items assigned to them")
     return {"ok": True}

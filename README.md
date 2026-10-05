@@ -1,13 +1,18 @@
-# Gift List
+# Lists
 
-A small local app for keeping a running list of gift ideas so you don't
-forget what to get people - name, description, a source URL (e.g. a product
-page), a date you need it by, and who it's for.
+A small local app for keeping any number of named lists. Each list has a
+name and a purpose ("Gifts", "Movies to watch", ...) and its own items; every
+list has the same item structure - name, description, a source URL (e.g. a
+product page), a date you need it by, who it's for, and a done checkbox.
+
+(This started life as the `gifts` app - the existing gift items live on in a
+list called "Gifts", and the app's port/hostname are still `8030` /
+`gifts.evancooperman.com` from then.)
 
 ## Run it
 
 ```bash
-cd gifts
+cd lists
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -30,17 +35,28 @@ talking to the API over `fetch`. That separation means the backend can be
 tested and used entirely on its own, and the frontend can later be swapped
 for something richer without touching the API.
 
-Gift endpoints:
+List endpoints:
 
-- `GET /api/gifts` - list all gifts (unpurchased first, then by "needed by"
-  date, then newest first)
-- `POST /api/gifts` - create a gift (`name` is the only required field)
-- `GET /api/gifts/{id}` - fetch one gift
-- `PATCH /api/gifts/{id}` - update any subset of fields, including
-  `recipient_id` and `purchased` (send `null`/`false` to clear them)
-- `DELETE /api/gifts/{id}` - delete a gift
-- `POST /api/gifts/{id}/scrape` - (re-)run the scraper for the gift's URL and
-  persist the result onto the gift
+- `GET /api/lists` - all lists, each with `item_count` and `open_count`
+- `POST /api/lists` - create a list (`name` required, `purpose` optional)
+- `GET /api/lists/{id}` - fetch one list
+- `PATCH /api/lists/{id}` - update `name` / `purpose`
+- `DELETE /api/lists/{id}` - delete a list (409s while it still has items -
+  move or delete them first, same guard as contacts)
+- `GET /api/lists/{id}/items` - the list's items (not-done first, then by
+  "needed by" date, then newest first)
+- `POST /api/lists/{id}/items` - add an item to the list (`name` is the only
+  required field)
+
+Item endpoints (acting on one existing item):
+
+- `GET /api/items/{id}` - fetch one item
+- `PATCH /api/items/{id}` - update any subset of fields, including
+  `recipient_id`, `done`, and `list_id` (moves the item to another list; it
+  can't be cleared - every item belongs to exactly one list)
+- `DELETE /api/items/{id}` - delete an item
+- `POST /api/items/{id}/scrape` - (re-)run the scraper for the item's URL and
+  persist the result onto the item
 
 Contact endpoints (the "who is it for" list, managed on `/contacts.html`):
 
@@ -48,8 +64,8 @@ Contact endpoints (the "who is it for" list, managed on `/contacts.html`):
 - `POST /api/contacts` - create a contact (`first_name` is the only required
   field; `last_name`, `email`, `address` are optional)
 - `PATCH /api/contacts/{id}` - update any subset of fields
-- `DELETE /api/contacts/{id}` - delete a contact (409s if any gift is still
-  assigned to them - reassign or delete those gifts first)
+- `DELETE /api/contacts/{id}` - delete a contact (409s if any item is still
+  assigned to them - reassign or delete those items first)
 
 ## Schema changes (Alembic)
 
@@ -91,7 +107,7 @@ the new database - no application code depends on SQLite specifics.
 ## Scraping framework
 
 `app/scraping/` holds the strategy framework for pulling a title, description,
-and image out of a gift's URL:
+and image out of an item's URL:
 
 - `base.py` - `ScraperStrategy` interface (`matches(url)` / `scrape(url)`)
   and the `ScrapedContent` result shape
@@ -102,14 +118,14 @@ and image out of a gift's URL:
   particular) just want a normal browser UA
 - `instagram.py`, `facebook.py` - social-post strategies, matching on
   hostname and delegating to `og_tags` with the crawler UA
-- `generic.py` - catch-all fallback for everything else (most gift links are
+- `generic.py` - catch-all fallback for everything else (most item links are
   ordinary retailer product pages), delegating to `og_tags` with a normal
   browser UA
 - `registry.py` - picks the first strategy whose `matches()` returns true
   for a given URL; `generic.py` is registered last since it matches
   everything
 - `service.py` - orchestrates a scrape and persists the outcome (success,
-  failed, or unsupported) onto the gift via `crud.save_scrape_result`
+  failed, or unsupported) onto the item via `crud.save_scrape_result`
 
 Adding support for a site that needs special handling later is just a new
 `ScraperStrategy` subclass registered ahead of `GenericScraper` in
@@ -125,21 +141,21 @@ manually-entered fields, never a requirement.
 
 Runs as a systemd service on the Digital Ocean droplet, reached through a
 Cloudflare Tunnel (no inbound ports opened on the droplet) and gated by
-Cloudflare Access - see `deploy/gifts.service`.
+Cloudflare Access - see `deploy/lists.service`.
 
 One-time setup on the droplet:
 
 ```bash
-sudo mkdir -p /opt/apps/gifts && sudo chown deploy:deploy /opt/apps/gifts
+sudo mkdir -p /opt/apps/lists && sudo chown deploy:deploy /opt/apps/lists
 # as the deploy user:
-git clone https://github.com/ecooperman/gifts.git /opt/apps/gifts
-cd /opt/apps/gifts
+git clone https://github.com/ecooperman/lists.git /opt/apps/lists
+cd /opt/apps/lists
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 alembic upgrade head
-sudo cp deploy/gifts.service /etc/systemd/system/
+sudo cp deploy/lists.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now gifts
+sudo systemctl enable --now lists
 ```
 
 Then add an ingress entry for `127.0.0.1:8030` to `/etc/cloudflared/config.yml`,
@@ -154,26 +170,32 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
 
 ## Notes
 
-- Only `name` is required on a gift - everything else (recipient,
+- Pages: `/` is the lists index (each list with how many items are left),
+  `/list.html?id=N` is one list's items (the same `page.html?id=N` pattern
+  trip-planning uses), and `/contacts.html` manages contacts. Editing or
+  deleting a list is the "Edit list" button on that list's own page.
+- Only `name` is required on an item - everything else (recipient,
   description, URL, needed-by date) is optional and can be filled in later.
-- Gifts are collapsed-by-default accordion cards - the same pattern as the
+- Items are collapsed-by-default accordion cards - the same pattern as the
   jobs admin page in time-management (`jobs.html`/`jobs.js`): a single-line
   summary (name, recipient, source domain, date) that expands in place into
-  the full edit form, rather than a separate view/edit mode or a modal. This
-  keeps a long list scannable while still making every field editable.
-- "Add Gift" is a toggle button that reveals an inline add form (again
+  the full edit form, rather than a separate view/edit mode or a modal. The
+  edit form's "List" dropdown moves the item to another list.
+- "Add Item" is a toggle button that reveals an inline add form (again
   mirroring the jobs admin page's "+ Add New Job Opportunity"), not a modal.
-- Each gift has a checkbox in its summary row to mark it purchased without
-  expanding the card - purchased gifts sort to the bottom of the list and
-  show with a struck-through name. `purchased_at` is recorded automatically
-  when the checkbox is checked (and cleared if unchecked).
+- Each item has a checkbox in its summary row to mark it done without
+  expanding the card - done items sort to the bottom of the list and show
+  with a struck-through name. `done_at` is recorded automatically when the
+  checkbox is checked (and cleared if unchecked).
 - "Who is it for?" is a dropdown of contacts, not a free-text field -
   contacts are managed separately on `/contacts.html` (linked from the nav
   bar), the same "categories" pattern used in time-management. Only
   `first_name` is required on a contact; `last_name`, `email`, and `address`
-  are optional. A contact can't be deleted while a gift still references
+  are optional. A contact can't be deleted while an item still references
   them (409, mirroring the category-in-use check in time-management).
-- The "Fetch preview" button only appears when a gift has a URL, and calls
-  `POST /api/gifts/{id}/scrape`. It can be re-run any time (e.g. after a
+- The "Fetch preview" button only appears when an item has a URL, and calls
+  `POST /api/items/{id}/scrape`. It can be re-run any time (e.g. after a
   transient failure) via "Re-fetch preview", and lives inside the expanded
   card alongside the scraped preview (if any).
+- Every list shares the same item fields for now (including the gift-flavored
+  "Who is it for?" / "Needed by"); per-list fields would be the next layer.

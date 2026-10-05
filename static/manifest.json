@@ -1,7 +1,7 @@
 {
-  "name": "Gift List",
-  "short_name": "Gifts",
-  "description": "Gift ideas to buy, organized by who they're for.",
+  "name": "Lists",
+  "short_name": "Lists",
+  "description": "Named lists of items - gifts, things to buy, anything worth keeping track of.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

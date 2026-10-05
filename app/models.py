@@ -23,21 +23,37 @@ class Contact(Base):
     email = Column(String, nullable=True)
     address = Column(String, nullable=True)
 
-    gifts = relationship("Gift", back_populates="recipient")
+    items = relationship("Item", back_populates="recipient")
 
 
-class Gift(Base):
-    __tablename__ = "gifts"
+class ItemList(Base):
+    """A named list with a purpose ("Gifts", "Movies to watch", ...). Every
+    list has the same item structure - see Item - so a list is just a name
+    and a purpose wrapped around its own items."""
+
+    __tablename__ = "lists"
 
     id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    purpose = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    items = relationship("Item", back_populates="list")
+
+
+class Item(Base):
+    __tablename__ = "items"
+
+    id = Column(Integer, primary_key=True)
+    list_id = Column(Integer, ForeignKey("lists.id"), nullable=False)
     recipient_id = Column(Integer, ForeignKey("contacts.id"), nullable=True)
     name = Column(String, nullable=False)
     description = Column(String, nullable=True)
     url = Column(String, nullable=True)
     needed_by = Column(DateTime, nullable=True)
 
-    purchased = Column(Boolean, nullable=False, default=False)
-    purchased_at = Column(DateTime, nullable=True)
+    done = Column(Boolean, nullable=False, default=False)
+    done_at = Column(DateTime, nullable=True)
 
     scrape_status = Column(Enum(ScrapeStatus), nullable=False, default=ScrapeStatus.not_started)
     scraped_title = Column(String, nullable=True)
@@ -49,4 +65,5 @@ class Gift(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    recipient = relationship("Contact", back_populates="gifts")
+    list = relationship("ItemList", back_populates="items")
+    recipient = relationship("Contact", back_populates="items")

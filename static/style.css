@@ -1,7 +1,7 @@
 /* Everything shared with other apps (reset, layout, forms, accordion
    cards, add-toggle, message toasts, nav, buttons, scrape preview) now
    lives in https://static.evancooperman.com/theme.css - see that repo's
-   README. Only gifts-specific bits stay here: this app's brand accent
+   README. Only this app's own bits stay here: this app's brand accent
    (amber, not the shared green) and the contacts admin page. */
 
 :root {
@@ -12,10 +12,38 @@
 /* The shared .item-badge-accent uses var(--accent) as both text and
    background-tint color, which reads fine on the green default but is too
    light for legible text at this amber shade - keep the original darker
-   brown for the badge text specifically (recipient pill on each gift's
+   brown for the badge text specifically (recipient pill on each item's
    summary row), background still follows --accent-bg above. */
 .item-badge-accent {
   color: #6b4f28;
+}
+
+/* --- lists index + list page --- */
+
+/* The whole list card is a link, so it needs the button-reset .item-summary
+   gets from the shared theme plus link styling removed. */
+a.list-link {
+  text-decoration: none;
+}
+
+.list-summary-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.list-summary-purpose {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edit-list-toggle {
+  margin-bottom: 12px;
 }
 
 /* --- contacts admin page --- */
@@ -51,9 +79,9 @@
 }
 
 @media (max-width: 480px) {
-  /* Domain badge is the least essential piece of a gift's summary row on a
+  /* Domain badge is the least essential piece of an item's summary row on a
      narrow screen - hide it there rather than letting the row wrap. */
-  #gifts-list .item-badge-domain {
+  #items-list .item-badge-domain {
     display: none;
   }
 }

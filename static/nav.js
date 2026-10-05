@@ -3,8 +3,11 @@
 // instead of hunting down every page's copy. Needs Global.buildNav
 // (theme.js) and applyIcons (icons.js) already loaded.
 
+// An individual list's page (/list.html?id=N) counts as part of "Lists".
+const onListsPage = location.pathname === "/" || location.pathname === "/list.html";
+
 Global.buildNav([
-  { href: "/", icon: "gift", label: "Gifts", active: location.pathname === "/" },
+  { href: "/", icon: "list", label: "Lists", active: onListsPage },
   { href: "/contacts.html", icon: "person", label: "Contacts", active: location.pathname === "/contacts.html" },
   { icon: "refresh", label: "Refresh", onclick: () => location.reload() },
 ]);

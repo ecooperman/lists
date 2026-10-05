@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>List</title>
+  <link rel="stylesheet" href="{{ shared_assets_base }}/theme.css" />
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Home screen / installed-app support -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#b8863b" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Lists" />
+</head>
+<body>
+  <header class="app-header">
+    <h1 id="list-title">&nbsp;</h1>
+    <p id="list-purpose" class="subtitle"></p>
+  </header>
+
+  <main>
+    <div id="app-nav-mount"></div>
+
+    <div id="page-message" class="page-message hidden"></div>
+
+    <button id="show-edit-list" type="button" class="secondary-btn edit-list-toggle">Edit list</button>
+
+    <form id="edit-list-form" class="add-card hidden">
+      <div class="field">
+        <label for="edit-list-name">Name <span class="required">*</span></label>
+        <input id="edit-list-name" name="name" type="text" required />
+      </div>
+      <div class="field">
+        <label for="edit-list-purpose">Purpose</label>
+        <textarea id="edit-list-purpose" name="purpose" rows="2" placeholder="What is this list for?"></textarea>
+      </div>
+      <div class="item-actions">
+        <button type="button" id="delete-list" class="danger-btn">Delete list</button>
+        <button type="submit" class="save-btn">Save</button>
+        <button type="button" id="cancel-edit-list" class="cancel-btn">Cancel</button>
+      </div>
+    </form>
+
+    <button id="show-add-item" type="button" class="add-toggle">+ Add Item</button>
+
+    <form id="new-item-form" class="add-card hidden">
+      <div class="field">
+        <label for="new-name">Name <span class="required">*</span></label>
+        <input id="new-name" name="name" type="text" required placeholder="e.g. Wireless earbuds" />
+      </div>
+      <div class="field">
+        <label for="new-recipient">Who is it for?</label>
+        <select id="new-recipient" name="recipient_id">
+          <option value="">Unassigned</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="new-description">Description</label>
+        <textarea id="new-description" name="description" rows="2" placeholder="Optional notes"></textarea>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="new-url">URL</label>
+          <input id="new-url" name="url" type="url" placeholder="https://..." />
+        </div>
+        <div class="field">
+          <label for="new-date">Needed by</label>
+          <input id="new-date" name="needed_by" type="date" />
+        </div>
+      </div>
+      <div class="item-actions">
+        <button type="submit" class="save-btn">Add item</button>
+        <button type="button" id="cancel-add-item" class="cancel-btn">Cancel</button>
+      </div>
+    </form>
+
+    <section>
+      <div class="list-header">
+        <h2>Items</h2>
+        <span id="item-count" class="list-count"></span>
+      </div>
+      <div id="items-list" class="item-list"></div>
+      <p id="empty-state" class="empty-state" hidden>No items yet - add one above to get started.</p>
+    </section>
+  </main>
+
+  <script src="{{ shared_assets_base }}/theme.js"></script>
+  <script src="{{ shared_assets_base }}/icons.js"></script>
+  <script src="nav.js"></script>
+  <script src="list.js"></script>
+</body>
+</html>
