@@ -6,8 +6,8 @@ list has the same item structure - name, description, a source URL (e.g. a
 product page), a date you need it by, who it's for, and a done checkbox.
 
 (This started life as the `gifts` app - the existing gift items live on in a
-list called "Gifts", and the app's port/hostname are still `8030` /
-`gifts.evancooperman.com` from then.)
+list called "Gifts". The app's port is still `8030` from then, and the DB
+file is still `gifts.db`.)
 
 ## Run it
 
