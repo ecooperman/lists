@@ -2,8 +2,8 @@
 // plus the add-list form. Opening a list goes to list.html?id=N (list.js).
 
 async function loadLists() {
-  const lists = await Global.fetchJSON("/api/lists");
   const container = document.getElementById("lists-list");
+  const lists = await Global.withLoading(container, Global.fetchJSON("/api/lists"));
   container.innerHTML = "";
   document.getElementById("list-count").textContent = lists.length ? String(lists.length) : "";
   document.getElementById("empty-state").hidden = lists.length !== 0;

@@ -100,7 +100,7 @@ function initEditListForm() {
 // --- items ---
 
 async function loadItems() {
-  const items = await Global.fetchJSON(`${LIST_API}/items`);
+  const items = await Global.withLoading(document.getElementById("items-list"), Global.fetchJSON(`${LIST_API}/items`));
   renderItems(items);
 }
 

@@ -79,8 +79,8 @@ function contactRowElement(contact) {
 }
 
 async function loadContacts() {
-  const contacts = await Global.fetchJSON("/api/contacts");
   const container = document.getElementById("contact-rows");
+  const contacts = await Global.withLoading(container, Global.fetchJSON("/api/contacts"));
   container.innerHTML = "";
   for (const contact of contacts) {
     container.appendChild(contactRowElement(contact));
