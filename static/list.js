@@ -178,12 +178,7 @@ function initImportForm() {
           Global.el(
             "ol",
             { class: "import-list" },
-            rows.map((row) =>
-              Global.el("li", {}, [
-                Global.el("span", { class: "import-name", text: row.name }),
-                row.description ? Global.el("span", { class: "import-description", text: row.description }) : null,
-              ])
-            )
+            rows.map((row) => Global.el("li", { text: row.name }))
           )
         );
         confirmBtn.textContent = `Import ${rows.length} ${rows.length === 1 ? "item" : "items"}`;

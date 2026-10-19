@@ -76,7 +76,6 @@ class ItemImportRequest(BaseModel):
 
 class ItemImportPreview(BaseModel):
     name: str
-    description: Optional[str] = None
 
 
 class ItemUpdate(BaseModel):

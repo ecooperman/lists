@@ -152,19 +152,14 @@ def create_item(db: Session, list_id: int, item: schemas.ItemCreate):
     return db_item
 
 
-def create_items(db: Session, list_id: int, parsed) -> list:
-    """Create several items in one commit, from importer.ParsedItem rows."""
+def create_items(db: Session, list_id: int, names) -> list:
+    """Create several items in one commit, one per name."""
     # The list shows newest-first, so stamp the first pasted line as the
     # newest - otherwise a pasted list would display upside down.
     now = datetime.utcnow()
     db_items = [
-        models.Item(
-            list_id=list_id,
-            name=row.name,
-            description=row.description,
-            created_at=now - timedelta(microseconds=i),
-        )
-        for i, row in enumerate(parsed)
+        models.Item(list_id=list_id, name=name, created_at=now - timedelta(microseconds=i))
+        for i, name in enumerate(names)
     ]
     db.add_all(db_items)
     db.commit()

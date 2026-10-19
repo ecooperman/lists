@@ -101,19 +101,10 @@ a.list-link {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-.import-name {
   font-weight: 600;
   font-size: 14px;
 }
 
-.import-description {
-  display: block;
-  color: var(--muted);
-  font-size: 12px;
-  white-space: pre-line;
-}
 
 /* --- contacts admin page --- */
 

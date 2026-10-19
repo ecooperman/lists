@@ -71,14 +71,14 @@ def create_item(list_id: int, item: schemas.ItemCreate, db: Session = Depends(ge
 def preview_import(list_id: int, body: schemas.ItemImportRequest, db: Session = Depends(get_db)):
     if crud.get_list(db, list_id) is None:
         raise HTTPException(status_code=404, detail="List not found")
-    return [schemas.ItemImportPreview(name=p.name, description=p.description) for p in parse_dash_list(body.text)]
+    return [schemas.ItemImportPreview(name=name) for name in parse_dash_list(body.text)]
 
 
 @router.post("/{list_id}/items/import", response_model=List[schemas.Item])
 def import_items(list_id: int, body: schemas.ItemImportRequest, db: Session = Depends(get_db)):
     if crud.get_list(db, list_id) is None:
         raise HTTPException(status_code=404, detail="List not found")
-    parsed = parse_dash_list(body.text)
-    if not parsed:
+    names = parse_dash_list(body.text)
+    if not names:
         raise HTTPException(status_code=400, detail="No items found - start each item on its own line with a dash")
-    return crud.create_items(db, list_id, parsed)
+    return crud.create_items(db, list_id, names)

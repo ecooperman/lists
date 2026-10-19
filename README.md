@@ -54,9 +54,11 @@ List endpoints:
 - `POST /api/lists/{id}/items/import` - same body; creates those items (400 if
   the text contains none)
 
-Import format: every line starting with `-` is one item's name; any non-dash
-lines after it are added to that item's description. Text before the first
-dash, blank lines, and `---` separators are ignored (see `app/importer.py`).
+Import format: every line starting with `-` starts a new item. Any non-dash
+lines after it are treated as the same item wrapped onto another line (a stray
+line break from copy/paste) and joined onto its name with a space. Text before
+the first dash, blank lines, and `---` separators are ignored (see
+`app/importer.py`).
 
 Item endpoints (acting on one existing item):
 
