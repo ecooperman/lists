@@ -40,6 +40,7 @@ async function loadContacts() {
 function renderListHeader() {
   document.getElementById("list-title").textContent = currentList.name;
   document.getElementById("list-purpose").textContent = currentList.purpose || "";
+  document.getElementById("list-locked").classList.toggle("hidden", !currentList.locked);
   document.title = `${currentList.name} - Lists`;
 }
 
@@ -51,15 +52,25 @@ async function loadList() {
 function initEditListForm() {
   const form = document.getElementById("edit-list-form");
   const showBtn = document.getElementById("show-edit-list");
+  const deleteBtn = document.getElementById("delete-list");
 
   function close() {
     form.classList.add("hidden");
     showBtn.classList.remove("hidden");
   }
 
+  // Deleting is off while the list is (saved as) locked - uncheck the box
+  // and Save first.
+  function syncDeleteButton() {
+    deleteBtn.disabled = currentList.locked;
+    deleteBtn.title = currentList.locked ? "Unlock this list before deleting it" : "";
+  }
+
   showBtn.addEventListener("click", () => {
     form.name.value = currentList.name;
     form.purpose.value = currentList.purpose || "";
+    form.locked.checked = currentList.locked;
+    syncDeleteButton();
     form.classList.remove("hidden");
     showBtn.classList.add("hidden");
     form.name.focus();
@@ -75,9 +86,10 @@ function initEditListForm() {
       currentList = await Global.fetchJSON(LIST_API, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, purpose: form.purpose.value.trim() || null }),
+        body: JSON.stringify({ name, purpose: form.purpose.value.trim() || null, locked: form.locked.checked }),
       });
       renderListHeader();
+      syncDeleteButton();
       close();
       Global.showMessage(`Saved "${name}".`, "success");
     } catch (err) {
@@ -85,14 +97,119 @@ function initEditListForm() {
     }
   });
 
-  document.getElementById("delete-list").addEventListener("click", async () => {
-    if (!confirm(`Delete the list "${currentList.name}"?`)) return;
+  deleteBtn.addEventListener("click", async () => {
     try {
-      await Global.fetchJSON(LIST_API, { method: "DELETE" });
+      // Re-fetch: the lock state and item count on the page may be stale
+      // (another tab, or items added since load).
+      const fresh = await Global.fetchJSON(LIST_API);
+      if (fresh.locked) {
+        currentList = fresh;
+        renderListHeader();
+        syncDeleteButton();
+        Global.showMessage("This list is locked - unlock it before deleting it.", "error");
+        return;
+      }
+      const count = fresh.item_count;
+      const noun = count === 1 ? "item" : "items";
+      const warning = count
+        ? `"${fresh.name}" has ${count} ${noun}. Deleting the list permanently deletes ${count === 1 ? "that item" : `all ${count} items`} too - this can't be undone.\n\nDelete "${fresh.name}" and its ${count} ${noun}?`
+        : `Delete the list "${fresh.name}"?`;
+      if (!confirm(warning)) return;
+      // force only when the user just confirmed deleting items; an empty
+      // list deletes without it, so the server's guard still protects
+      // against items added in the meantime.
+      await Global.fetchJSON(count ? `${LIST_API}?force=true` : LIST_API, { method: "DELETE" });
       window.location.href = "/";
     } catch (err) {
-      // 409 when the list still has items - the server's message says what to do.
       Global.showMessage(err.message, "error");
+    }
+  });
+}
+
+// --- import pasted notes as items ---
+
+function initImportForm() {
+  const form = document.getElementById("import-form");
+  const showBtn = document.getElementById("show-import");
+  const preview = document.getElementById("import-preview");
+  const confirmBtn = document.getElementById("import-confirm");
+
+  // Any edit to the text makes the shown preview stale.
+  function resetPreview() {
+    preview.classList.add("hidden");
+    preview.innerHTML = "";
+    confirmBtn.classList.add("hidden");
+  }
+
+  function close() {
+    form.reset();
+    resetPreview();
+    form.classList.add("hidden");
+    showBtn.classList.remove("hidden");
+  }
+
+  showBtn.addEventListener("click", () => {
+    form.classList.remove("hidden");
+    showBtn.classList.add("hidden");
+    form.text.focus();
+  });
+
+  document.getElementById("cancel-import").addEventListener("click", close);
+  form.text.addEventListener("input", resetPreview);
+
+  // Submit = "Preview": ask the server what the text parses into, show it,
+  // and only then offer the Import button.
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = form.text.value;
+    if (!text.trim()) return;
+    try {
+      const rows = await Global.fetchJSON(`${LIST_API}/items/import/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      preview.innerHTML = "";
+      if (!rows.length) {
+        preview.appendChild(Global.el("p", { class: "import-empty", text: "No items found - start each item on its own line with a dash." }));
+      } else {
+        preview.appendChild(Global.el("p", { class: "import-summary", text: `${rows.length} ${rows.length === 1 ? "item" : "items"} will be added:` }));
+        preview.appendChild(
+          Global.el(
+            "ol",
+            { class: "import-list" },
+            rows.map((row) =>
+              Global.el("li", {}, [
+                Global.el("span", { class: "import-name", text: row.name }),
+                row.description ? Global.el("span", { class: "import-description", text: row.description }) : null,
+              ])
+            )
+          )
+        );
+        confirmBtn.textContent = `Import ${rows.length} ${rows.length === 1 ? "item" : "items"}`;
+        confirmBtn.classList.remove("hidden");
+      }
+      preview.classList.remove("hidden");
+    } catch (err) {
+      Global.showMessage(err.message, "error");
+    }
+  });
+
+  confirmBtn.addEventListener("click", async () => {
+    confirmBtn.disabled = true;
+    try {
+      const created = await Global.fetchJSON(`${LIST_API}/items/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: form.text.value }),
+      });
+      close();
+      Global.showMessage(`Imported ${created.length} ${created.length === 1 ? "item" : "items"}.`, "success");
+      loadItems();
+    } catch (err) {
+      Global.showMessage(err.message, "error");
+    } finally {
+      confirmBtn.disabled = false;
     }
   });
 }
@@ -374,6 +491,7 @@ async function init() {
     return;
   }
   initEditListForm();
+  initImportForm();
   initAddItemForm();
   try {
     await loadList();

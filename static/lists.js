@@ -24,6 +24,10 @@ function listCardElement(itemList) {
   ]);
   link.appendChild(text);
 
+  if (itemList.locked) {
+    link.appendChild(Global.el("span", { class: "item-badge item-badge-muted", text: "Locked" }));
+  }
+
   const countText = itemList.item_count ? `${itemList.open_count} left` : "Empty";
   link.appendChild(Global.el("span", { class: "item-badge item-badge-accent", text: countText }));
   link.appendChild(Global.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));

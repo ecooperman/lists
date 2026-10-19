@@ -40,13 +40,23 @@ List endpoints:
 - `GET /api/lists` - all lists, each with `item_count` and `open_count`
 - `POST /api/lists` - create a list (`name` required, `purpose` optional)
 - `GET /api/lists/{id}` - fetch one list
-- `PATCH /api/lists/{id}` - update `name` / `purpose`
-- `DELETE /api/lists/{id}` - delete a list (409s while it still has items -
-  move or delete them first, same guard as contacts)
+- `PATCH /api/lists/{id}` - update `name` / `purpose` / `locked`
+- `DELETE /api/lists/{id}` - delete a list. 409s if the list is `locked`
+  (unlock it first - `force` doesn't override this), or while it still has
+  items (same guard as contacts) unless you pass `?force=true`, which deletes
+  the items along with the list and returns `deleted_items`
 - `GET /api/lists/{id}/items` - the list's items (not-done first, then by
   "needed by" date, then newest first)
 - `POST /api/lists/{id}/items` - add an item to the list (`name` is the only
   required field)
+- `POST /api/lists/{id}/items/import/preview` - body `{"text": "..."}`; returns
+  the items that text would create, without saving anything
+- `POST /api/lists/{id}/items/import` - same body; creates those items (400 if
+  the text contains none)
+
+Import format: every line starting with `-` is one item's name; any non-dash
+lines after it are added to that item's description. Text before the first
+dash, blank lines, and `---` separators are ignored (see `app/importer.py`).
 
 Item endpoints (acting on one existing item):
 
@@ -172,8 +182,15 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
 
 - Pages: `/` is the lists index (each list with how many items are left),
   `/list.html?id=N` is one list's items (the same `page.html?id=N` pattern
-  trip-planning uses), and `/contacts.html` manages contacts. Editing or
-  deleting a list is the "Edit list" button on that list's own page.
+  trip-planning uses), and `/contacts.html` manages contacts. Editing,
+  locking and deleting a list is the "Edit list" button on that list's own
+  page; "Import items" is next to it.
+- A list can be locked: a locked list shows a "Locked" badge and its Delete
+  button is disabled until you uncheck "Locked" and Save. Deleting an
+  unlocked list that has items asks you to confirm and says how many items
+  will be deleted with it; an empty list just asks for a plain confirm.
+- Import is two steps - paste, "Preview" (shows exactly what will be created),
+  then "Import N items" - so a bad paste never writes anything.
 - Only `name` is required on an item - everything else (recipient,
   description, URL, needed-by date) is optional and can be filled in later.
 - Items are collapsed-by-default accordion cards - the same pattern as the

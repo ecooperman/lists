@@ -19,6 +19,7 @@
   <header class="app-header">
     <h1 id="list-title">&nbsp;</h1>
     <p id="list-purpose" class="subtitle"></p>
+    <span id="list-locked" class="item-badge item-badge-muted hidden">Locked</span>
   </header>
 
   <main>
@@ -26,7 +27,10 @@
 
     <div id="page-message" class="page-message hidden"></div>
 
-    <button id="show-edit-list" type="button" class="secondary-btn edit-list-toggle">Edit list</button>
+    <div class="list-tools">
+      <button id="show-edit-list" type="button" class="secondary-btn">Edit list</button>
+      <button id="show-import" type="button" class="secondary-btn">Import items</button>
+    </div>
 
     <form id="edit-list-form" class="add-card hidden">
       <div class="field">
@@ -37,10 +41,28 @@
         <label for="edit-list-purpose">Purpose</label>
         <textarea id="edit-list-purpose" name="purpose" rows="2" placeholder="What is this list for?"></textarea>
       </div>
+      <div class="field checkbox-field">
+        <input id="edit-list-locked" name="locked" type="checkbox" />
+        <label for="edit-list-locked">Locked - this list can't be deleted until it's unlocked</label>
+      </div>
       <div class="item-actions">
         <button type="button" id="delete-list" class="danger-btn">Delete list</button>
         <button type="submit" class="save-btn">Save</button>
         <button type="button" id="cancel-edit-list" class="cancel-btn">Cancel</button>
+      </div>
+    </form>
+
+    <form id="import-form" class="add-card hidden">
+      <div class="field">
+        <label for="import-text">Paste a list</label>
+        <textarea id="import-text" name="text" rows="8" placeholder="- first item&#10;- second item"></textarea>
+        <span class="field-hint">One item per line, starting with a dash. A line without a dash is added to the item above it as its description.</span>
+      </div>
+      <div id="import-preview" class="import-preview hidden"></div>
+      <div class="item-actions">
+        <button type="button" id="import-confirm" class="save-btn hidden">Import</button>
+        <button type="submit" class="secondary-btn">Preview</button>
+        <button type="button" id="cancel-import" class="cancel-btn">Cancel</button>
       </div>
     </form>
 

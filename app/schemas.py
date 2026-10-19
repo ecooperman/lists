@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from .models import ScrapeStatus
 
@@ -42,12 +42,14 @@ class ItemListCreate(ItemListBase):
 class ItemListUpdate(BaseModel):
     name: Optional[str] = None
     purpose: Optional[str] = None
+    locked: Optional[bool] = None
 
 
 class ItemList(ItemListBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    locked: bool
     created_at: datetime
     # Not columns - crud.attach_counts() sets these on each row so the lists
     # index can show "N left" without a request per list.
@@ -65,6 +67,16 @@ class ItemBase(BaseModel):
 
 class ItemCreate(ItemBase):
     pass
+
+
+class ItemImportRequest(BaseModel):
+    # The pasted notes - one item per "-" line (see app/importer.py).
+    text: str = Field(max_length=100_000)
+
+
+class ItemImportPreview(BaseModel):
+    name: str
+    description: Optional[str] = None
 
 
 class ItemUpdate(BaseModel):

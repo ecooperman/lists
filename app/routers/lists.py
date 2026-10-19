@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
+from ..importer import parse_dash_list
 from ..deps import get_db
 
 router = APIRouter(prefix="/api/lists", tags=["lists"])
@@ -36,13 +37,18 @@ def update_list(list_id: int, updates: schemas.ItemListUpdate, db: Session = Dep
 
 
 @router.delete("/{list_id}")
-def delete_list(list_id: int, db: Session = Depends(get_db)):
-    result = crud.delete_list(db, list_id)
+def delete_list(list_id: int, force: bool = False, db: Session = Depends(get_db)):
+    result, deleted_items = crud.delete_list(db, list_id, force)
     if result == "not_found":
         raise HTTPException(status_code=404, detail="List not found")
+    if result == "locked":
+        raise HTTPException(status_code=409, detail="List is locked - unlock it before deleting it")
     if result == "in_use":
-        raise HTTPException(status_code=409, detail="List still has items in it - move or delete them first")
-    return {"ok": True}
+        raise HTTPException(
+            status_code=409,
+            detail="List still has items in it - move or delete them first, or pass force=true to delete them with the list",
+        )
+    return {"ok": True, "deleted_items": deleted_items}
 
 
 @router.get("/{list_id}/items", response_model=List[schemas.Item])
@@ -57,3 +63,22 @@ def create_item(list_id: int, item: schemas.ItemCreate, db: Session = Depends(ge
     if crud.get_list(db, list_id) is None:
         raise HTTPException(status_code=404, detail="List not found")
     return crud.create_item(db, list_id, item)
+
+
+# Import pasted notes as items - one per "-" line. Two steps so the UI can
+# show what will be created before anything is saved.
+@router.post("/{list_id}/items/import/preview", response_model=List[schemas.ItemImportPreview])
+def preview_import(list_id: int, body: schemas.ItemImportRequest, db: Session = Depends(get_db)):
+    if crud.get_list(db, list_id) is None:
+        raise HTTPException(status_code=404, detail="List not found")
+    return [schemas.ItemImportPreview(name=p.name, description=p.description) for p in parse_dash_list(body.text)]
+
+
+@router.post("/{list_id}/items/import", response_model=List[schemas.Item])
+def import_items(list_id: int, body: schemas.ItemImportRequest, db: Session = Depends(get_db)):
+    if crud.get_list(db, list_id) is None:
+        raise HTTPException(status_code=404, detail="List not found")
+    parsed = parse_dash_list(body.text)
+    if not parsed:
+        raise HTTPException(status_code=400, detail="No items found - start each item on its own line with a dash")
+    return crud.create_items(db, list_id, parsed)

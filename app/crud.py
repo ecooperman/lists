@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import case, func
@@ -98,17 +98,23 @@ def update_list(db: Session, list_id: int, updates: schemas.ItemListUpdate):
     return attach_counts(db, [db_list])[0]
 
 
-def delete_list(db: Session, list_id: int) -> str:
+def delete_list(db: Session, list_id: int, force: bool = False):
+    """Returns (result, deleted_item_count). A locked list is always refused
+    ("locked"), force or not - unlock it first. A non-empty list is refused
+    ("in_use", same guard as delete_contact) unless force=True, which deletes
+    its items along with it - callers should only pass that after the user
+    has been told how many items are about to go."""
     db_list = get_list(db, list_id)
     if db_list is None:
-        return "not_found"
-    # Same guard as delete_contact: never silently cascade-delete someone's
-    # items. Move them to another list (or delete them) first.
-    if db_list.item_count:
-        return "in_use"
+        return "not_found", 0
+    if db_list.locked:
+        return "locked", 0
+    if db_list.item_count and not force:
+        return "in_use", 0
+    deleted = db.query(models.Item).filter(models.Item.list_id == list_id).delete()
     db.delete(db_list)
     db.commit()
-    return "ok"
+    return "ok", deleted
 
 
 # --- items ---
@@ -144,6 +150,27 @@ def create_item(db: Session, list_id: int, item: schemas.ItemCreate):
     db.commit()
     db.refresh(db_item)
     return db_item
+
+
+def create_items(db: Session, list_id: int, parsed) -> list:
+    """Create several items in one commit, from importer.ParsedItem rows."""
+    # The list shows newest-first, so stamp the first pasted line as the
+    # newest - otherwise a pasted list would display upside down.
+    now = datetime.utcnow()
+    db_items = [
+        models.Item(
+            list_id=list_id,
+            name=row.name,
+            description=row.description,
+            created_at=now - timedelta(microseconds=i),
+        )
+        for i, row in enumerate(parsed)
+    ]
+    db.add_all(db_items)
+    db.commit()
+    for db_item in db_items:
+        db.refresh(db_item)
+    return db_items
 
 
 def update_item(db: Session, item_id: int, updates: schemas.ItemUpdate):

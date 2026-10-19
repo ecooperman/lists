@@ -36,6 +36,8 @@ class ItemList(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     purpose = Column(String, nullable=True)
+    # A locked list can't be deleted until it's unlocked (see crud.delete_list).
+    locked = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     items = relationship("Item", back_populates="list")
