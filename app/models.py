@@ -56,6 +56,9 @@ class Item(Base):
 
     done = Column(Boolean, nullable=False, default=False)
     done_at = Column(DateTime, nullable=True)
+    # 0-100, how far along a not-yet-done item is. Independent of `done`:
+    # checking an item off doesn't touch it (the UI just stops drawing it).
+    progress = Column(Integer, nullable=False, default=0)
 
     scrape_status = Column(Enum(ScrapeStatus), nullable=False, default=ScrapeStatus.not_started)
     scraped_title = Column(String, nullable=True)

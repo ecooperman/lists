@@ -85,6 +85,7 @@ class ItemUpdate(BaseModel):
     needed_by: Optional[datetime] = None
     recipient_id: Optional[int] = None
     done: Optional[bool] = None
+    progress: Optional[int] = Field(default=None, ge=0, le=100)
     # Moves the item to another list. Can't be cleared - every item belongs
     # to exactly one list (the router rejects an explicit null).
     list_id: Optional[int] = None
@@ -97,6 +98,7 @@ class Item(ItemBase):
     list_id: int
     done: bool
     done_at: Optional[datetime] = None
+    progress: int
     recipient: Optional[Contact] = None
     scrape_status: ScrapeStatus
     scraped_title: Optional[str] = None

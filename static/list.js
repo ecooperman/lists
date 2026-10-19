@@ -229,6 +229,17 @@ function renderItems(items) {
   }
 }
 
+// Progress is drawn as a background fill across the item's summary row (see
+// the --progress rule in style.css) plus a small "N%" badge. A done item
+// shows neither - checking it off supersedes progress - though its stored
+// value is left alone.
+function applyProgress(card, item, pct) {
+  card.style.setProperty("--progress", item.done ? "0%" : `${pct}%`);
+  const badge = card.querySelector(".item-badge-progress");
+  badge.textContent = `${pct}%`;
+  badge.classList.toggle("hidden", item.done || pct === 0);
+}
+
 // Each item is a collapsed-by-default accordion: a single-line summary row
 // (name, recipient, source domain, date) that expands into the full edit
 // form in place - no separate "view" vs "edit" mode, and no modal. This
@@ -285,6 +296,8 @@ function itemCardElement(item, { expanded = false } = {}) {
     summary.appendChild(domainLink);
   }
 
+  summary.appendChild(Global.el("span", { class: "item-badge item-badge-muted item-badge-progress hidden" }));
+
   const dateLabel = Global.formatDateBadge(item.needed_by);
   if (dateLabel) {
     summary.appendChild(Global.el("span", { class: "item-badge item-badge-date", text: dateLabel }));
@@ -297,6 +310,7 @@ function itemCardElement(item, { expanded = false } = {}) {
   Global.wireAccordionToggle(card, summary, details);
 
   card.append(summary, details);
+  applyProgress(card, item, item.progress);
   details.appendChild(buildItemDetails(card, item));
   return card;
 }
@@ -318,6 +332,32 @@ function buildItemDetails(card, item) {
   const urlInput = Global.el("input", { type: "url", value: item.url || "" });
   const dateInput = Global.el("input", { type: "date", value: Global.toISODate(item.needed_by) });
 
+  // Steps of 10 rather than free entry. Dragging fills the row live ("input"
+  // fires continuously); the value is saved on its own when you let go
+  // ("change"), so it doesn't need the Save button or re-render the card.
+  const progressInput = Global.el("input", { type: "range", min: "0", max: "100", step: "10" });
+  progressInput.value = String(item.progress);
+  const progressValue = Global.el("span", { class: "progress-value", text: `${item.progress}%` });
+  progressInput.addEventListener("input", () => {
+    progressValue.textContent = `${progressInput.value}%`;
+    applyProgress(card, item, Number(progressInput.value));
+  });
+  progressInput.addEventListener("change", async () => {
+    try {
+      const updated = await Global.fetchJSON(`${ITEMS_API}/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ progress: Number(progressInput.value) }),
+      });
+      item.progress = updated.progress;
+    } catch (err) {
+      progressInput.value = String(item.progress);
+      progressValue.textContent = `${item.progress}%`;
+      applyProgress(card, item, item.progress);
+      Global.showMessage(err.message, "error");
+    }
+  });
+
   const fields = Global.el("div", { class: "item-fields" }, [
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Name" }), nameInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Who is it for?" }), recipientSelect]),
@@ -325,6 +365,10 @@ function buildItemDetails(card, item) {
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Needed by" }), dateInput]),
+    Global.el("div", { class: "field" }, [
+      Global.el("label", { text: "Progress" }),
+      Global.el("div", { class: "progress-control" }, [progressInput, progressValue]),
+    ]),
   ]);
   wrap.appendChild(fields);
 

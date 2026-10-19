@@ -18,6 +18,34 @@
   color: #6b4f28;
 }
 
+/* --- item progress: --progress (set per card by list.js, 0-100%) fills the
+   summary row left-to-right with the accent tint. background-image, not
+   background, so the theme's other summary styles are untouched. --- */
+
+.item-summary {
+  background-image: linear-gradient(to right, var(--accent-bg) var(--progress, 0%), transparent var(--progress, 0%));
+}
+
+.progress-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 38px;
+}
+
+.progress-control input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.progress-value {
+  min-width: 40px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 /* --- lists index + list page --- */
 
 /* The whole list card is a link, so it needs the button-reset .item-summary

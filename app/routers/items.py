@@ -20,6 +20,8 @@ def get_item(item_id: int, db: Session = Depends(get_db)):
 
 @router.patch("/{item_id}", response_model=schemas.Item)
 def update_item(item_id: int, updates: schemas.ItemUpdate, db: Session = Depends(get_db)):
+    if "progress" in updates.model_fields_set and updates.progress is None:
+        raise HTTPException(status_code=400, detail="Progress must be a number from 0 to 100")
     if "list_id" in updates.model_fields_set:
         if updates.list_id is None:
             raise HTTPException(status_code=400, detail="An item must belong to a list")
