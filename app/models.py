@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -12,6 +12,13 @@ class ScrapeStatus(str, enum.Enum):
     success = "success"
     failed = "failed"
     unsupported = "unsupported"
+
+
+# Priority is a fixed 1-5 scale shared by every list (an item may also have
+# none set), so sorting
+# means the same thing everywhere. Each list may relabel the five levels
+# (ItemList.priority_labels); these are what a list without overrides shows.
+DEFAULT_PRIORITY_LABELS = ["Low", "Medium", "High", "Critical", "Blocker"]
 
 
 class Contact(Base):
@@ -38,9 +45,34 @@ class ItemList(Base):
     purpose = Column(String, nullable=True)
     # A locked list can't be deleted until it's unlocked (see crud.delete_list).
     locked = Column(Boolean, nullable=False, default=False)
+    # How the list's items are ordered: "manual" (the drag order, sort_order)
+    # or "priority" (highest first, ties in manual order). See crud.get_items.
+    sort_mode = Column(String, nullable=False, default="manual")
+    # This list's own names for priority levels 1-5, or NULL for the defaults.
+    # Read/write it through the priority_labels property below.
+    _priority_labels = Column("priority_labels", JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     items = relationship("Item", back_populates="list")
+
+    @property
+    def priority_labels(self):
+        """Always five labels: this list's override for a level where it set
+        one, the default otherwise."""
+        stored = self._priority_labels or []
+        return [
+            stored[i].strip() if i < len(stored) and stored[i] and stored[i].strip() else default
+            for i, default in enumerate(DEFAULT_PRIORITY_LABELS)
+        ]
+
+    @priority_labels.setter
+    def priority_labels(self, value):
+        # Store only real overrides: a label that matches its default is kept
+        # blank, and a list with no overrides at all is stored as NULL.
+        cleaned = None if value is None else [(label or "").strip() for label in value]
+        if cleaned:
+            cleaned = ["" if label == default else label for label, default in zip(cleaned, DEFAULT_PRIORITY_LABELS)]
+        self._priority_labels = cleaned if cleaned and any(cleaned) else None
 
 
 class Item(Base):
@@ -59,6 +91,12 @@ class Item(Base):
     # 0-100, how far along a not-yet-done item is. Independent of `done`:
     # checking an item off doesn't touch it (the UI just stops drawing it).
     progress = Column(Integer, nullable=False, default=0)
+    # 1-5, lowest to highest (named per list, see ItemList.priority_labels);
+    # NULL = no priority set.
+    priority = Column(Integer, nullable=True)
+    # Manual position within the list, lower first (see crud.reorder_items).
+    # New items go to the end.
+    sort_order = Column(Integer, nullable=False, default=0)
 
     scrape_status = Column(Enum(ScrapeStatus), nullable=False, default=ScrapeStatus.not_started)
     scraped_title = Column(String, nullable=True)

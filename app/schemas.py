@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Optional
+from typing import Annotated, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from .models import ScrapeStatus
 
@@ -39,10 +39,18 @@ class ItemListCreate(ItemListBase):
     pass
 
 
+SortMode = Literal["manual", "priority"]
+PriorityLabel = Annotated[str, StringConstraints(max_length=30)]
+
+
 class ItemListUpdate(BaseModel):
     name: Optional[str] = None
     purpose: Optional[str] = None
     locked: Optional[bool] = None
+    sort_mode: Optional[SortMode] = None
+    # Exactly five labels for priority levels 1-5; a blank one falls back to
+    # its default, and null resets all five.
+    priority_labels: Optional[List[PriorityLabel]] = Field(default=None, min_length=5, max_length=5)
 
 
 class ItemList(ItemListBase):
@@ -50,6 +58,8 @@ class ItemList(ItemListBase):
 
     id: int
     locked: bool
+    sort_mode: SortMode
+    priority_labels: List[str]
     created_at: datetime
     # Not columns - crud.attach_counts() sets these on each row so the lists
     # index can show "N left" without a request per list.
@@ -63,6 +73,7 @@ class ItemBase(BaseModel):
     url: Optional[str] = None
     needed_by: Optional[datetime] = None
     recipient_id: Optional[int] = None
+    priority: Optional[int] = Field(default=None, ge=1, le=5)
 
 
 class ItemCreate(ItemBase):
@@ -72,6 +83,11 @@ class ItemCreate(ItemBase):
 class ItemImportRequest(BaseModel):
     # The pasted notes - one item per "-" line (see app/importer.py).
     text: str = Field(max_length=100_000)
+
+
+class ItemOrderRequest(BaseModel):
+    # Item ids in the order they should appear, top first.
+    item_ids: List[int]
 
 
 class ItemImportPreview(BaseModel):
@@ -86,6 +102,7 @@ class ItemUpdate(BaseModel):
     recipient_id: Optional[int] = None
     done: Optional[bool] = None
     progress: Optional[int] = Field(default=None, ge=0, le=100)
+    priority: Optional[int] = Field(default=None, ge=1, le=5)  # null clears it
     # Moves the item to another list. Can't be cleared - every item belongs
     # to exactly one list (the router rejects an explicit null).
     list_id: Optional[int] = None

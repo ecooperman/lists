@@ -46,13 +46,169 @@
   color: var(--muted);
 }
 
-/* --- lists index + list page --- */
+/* --- read-only item preview inside an expanded list on the index --- */
 
-/* The whole list card is a link, so it needs the button-reset .item-summary
-   gets from the shared theme plus link styling removed. */
-a.list-link {
-  text-decoration: none;
+.preview-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
+
+/* Each previewed item gets its own box (same look as the item cards on the
+   list page) so a row's priority badge is visibly tied to its item. */
+.preview-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.preview-item.done {
+  opacity: 0.75;
+}
+
+.preview-check {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.preview-item.done .preview-check {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.preview-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.preview-item.done .preview-name {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.preview-empty {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-style: italic;
+  font-size: 14px;
+}
+
+.preview-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* --- priority + ordering --- */
+
+.item-badge-priority {
+  font-weight: 600;
+}
+
+/* Colors follow the fixed 1-5 scale, whatever a list calls the levels. */
+.item-badge-priority.priority-1 {
+  color: var(--muted);
+  background: var(--muted-bg);
+}
+
+.item-badge-priority.priority-2 {
+  color: #8a5a00;
+  background: #fdf0d2;
+}
+
+.item-badge-priority.priority-3 {
+  color: #9a4a00;
+  background: #fde3c8;
+}
+
+.item-badge-priority.priority-4 {
+  color: #b3261e;
+  background: #fbe9e7;
+}
+
+.item-badge-priority.priority-5 {
+  color: #fff;
+  background: #b3261e;
+}
+
+.priority-label-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.priority-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.priority-label-row input {
+  flex: 1;
+}
+
+.priority-label-level {
+  width: 16px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.reset-labels-btn {
+  align-self: flex-start;
+}
+
+.item-drag-handle {
+  flex-shrink: 0;
+  cursor: grab;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: -3px;
+  padding: 6px 6px 6px 0;
+  user-select: none;
+  touch-action: none;
+}
+
+#items-list.sort-priority .item-drag-handle {
+  display: none;
+}
+
+.sortable-ghost {
+  opacity: 0.4;
+}
+
+.sort-control {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sort-control select {
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+/* --- lists index + list page --- */
 
 .list-summary-text {
   flex: 1;

@@ -40,15 +40,23 @@ List endpoints:
 - `GET /api/lists` - all lists, each with `item_count` and `open_count`
 - `POST /api/lists` - create a list (`name` required, `purpose` optional)
 - `GET /api/lists/{id}` - fetch one list
-- `PATCH /api/lists/{id}` - update `name` / `purpose` / `locked`
+- `PATCH /api/lists/{id}` - update `name` / `purpose` / `locked`, plus
+  `sort_mode` (`manual` or `priority`) and `priority_labels` (exactly five
+  names for priority levels 1-5; a blank one falls back to its default, `null`
+  resets all five). Every list response carries `priority_labels` fully
+  resolved, so clients never need the defaults (Low, Medium, High, Critical,
+  Blocker) themselves
 - `DELETE /api/lists/{id}` - delete a list. 409s if the list is `locked`
   (unlock it first - `force` doesn't override this), or while it still has
   items (same guard as contacts) unless you pass `?force=true`, which deletes
   the items along with the list and returns `deleted_items`
-- `GET /api/lists/{id}/items` - the list's items (not-done first, then by
-  "needed by" date, then newest first)
-- `POST /api/lists/{id}/items` - add an item to the list (`name` is the only
-  required field)
+- `GET /api/lists/{id}/items` - the list's items, not-done first, then by the
+  list's `sort_mode`: `manual` (the drag order, default) or `priority`
+  (highest first, items with no priority last, ties in manual order)
+- `POST /api/lists/{id}/items` - add an item to the end of the list (`name` is
+  the only required field)
+- `PUT /api/lists/{id}/items/order` - body `{"item_ids": [...]}`; saves that
+  order as the list's manual order (400 if an id repeats or isn't in the list)
 - `POST /api/lists/{id}/items/import/preview` - body `{"text": "..."}`; returns
   the items that text would create, without saving anything
 - `POST /api/lists/{id}/items/import` - same body; creates those items (400 if
@@ -64,8 +72,9 @@ Item endpoints (acting on one existing item):
 
 - `GET /api/items/{id}` - fetch one item
 - `PATCH /api/items/{id}` - update any subset of fields, including
-  `recipient_id`, `done`, and `list_id` (moves the item to another list; it
-  can't be cleared - every item belongs to exactly one list)
+  `recipient_id`, `done`, `progress` (0-100), `priority` (1-5, or `null` for
+  none) and `list_id` (moves the item to the end of another list; it can't be
+  cleared - every item belongs to exactly one list)
 - `DELETE /api/items/{id}` - delete an item
 - `POST /api/items/{id}/scrape` - (re-)run the scraper for the item's URL and
   persist the result onto the item
@@ -182,7 +191,9 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
 
 ## Notes
 
-- Pages: `/` is the lists index (each list with how many items are left),
+- Pages: `/` is the lists index (each list with how many items are left; click
+  one to expand a read-only preview of its items, with an "Open list" link to
+  change them),
   `/list.html?id=N` is one list's items (the same `page.html?id=N` pattern
   trip-planning uses), and `/contacts.html` manages contacts. Editing,
   locking and deleting a list is the "Edit list" button on that list's own
@@ -202,6 +213,20 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
   edit form's "List" dropdown moves the item to another list.
 - "Add Item" is a toggle button that reveals an inline add form (again
   mirroring the jobs admin page's "+ Add New Job Opportunity"), not a modal.
+- Ordering: each list is in manual order by default - drag an item by the
+  grip handle at the left of its row (touch and mouse; done items stay at the
+  bottom and can't be dragged). The "Sort" dropdown above the items switches
+  the list to priority order, which is saved per list; the manual order is
+  kept underneath and is what breaks ties, and dragging is off in that mode.
+  New and imported items are added to the end of the list.
+- Priority is a fixed 1-5 scale (an item may have none) so ordering means the
+  same thing on every list, but each list names the levels itself: the
+  defaults are Low, Medium, High, Critical, Blocker, and "Edit list" has five
+  fields to rename them (or "Reset to defaults"). The item's badge, its
+  dropdown and the index preview all show the list's own names.
+- Progress: a slider (steps of 10) in the expanded item fills the item's row
+  behind it and shows a percent badge; it saves on release and a done item
+  hides it.
 - Each item has a checkbox in its summary row to mark it done without
   expanding the card - done items sort to the bottom of the list and show
   with a struck-through name. `done_at` is recorded automatically when the

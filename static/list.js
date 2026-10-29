@@ -7,6 +7,7 @@ const LIST_API = `/api/lists/${listId}`;
 const ITEMS_API = "/api/items";
 const CONTACTS_API = "/api/contacts";
 
+let sortable = null;
 let currentList = null;
 let allLists = [];
 let contacts = [];
@@ -37,10 +38,30 @@ async function loadContacts() {
 
 // --- this list (header, edit form) ---
 
+// Priority is a fixed 1-5 number on every list (null = not set); each list
+// only chooses what to call 1-5 (currentList.priority_labels, which the
+// server always sends fully resolved with its defaults).
+function priorityLabel(level) {
+  return currentList.priority_labels[level - 1];
+}
+
+function populatePrioritySelect(select, selected) {
+  select.innerHTML = "";
+  select.appendChild(Global.el("option", { value: "", text: "None" }));
+  currentList.priority_labels.forEach((label, i) => {
+    const option = Global.el("option", { value: String(i + 1), text: label });
+    if (i + 1 === selected) option.selected = true;
+    select.appendChild(option);
+  });
+}
+
 function renderListHeader() {
   document.getElementById("list-title").textContent = currentList.name;
   document.getElementById("list-purpose").textContent = currentList.purpose || "";
   document.getElementById("list-locked").classList.toggle("hidden", !currentList.locked);
+  document.getElementById("sort-mode").value = currentList.sort_mode;
+  const newPriority = document.getElementById("new-priority");
+  populatePrioritySelect(newPriority, Number(newPriority.value) || null);
   document.title = `${currentList.name} - Lists`;
 }
 
@@ -66,9 +87,39 @@ function initEditListForm() {
     deleteBtn.title = currentList.locked ? "Unlock this list before deleting it" : "";
   }
 
+  const labelInputs = document.getElementById("priority-label-inputs");
+  function fillLabelInputs() {
+    labelInputs.innerHTML = "";
+    currentList.priority_labels.forEach((label, i) => {
+      labelInputs.appendChild(
+        Global.el("div", { class: "priority-label-row" }, [
+          Global.el("span", { class: "priority-label-level", text: String(i + 1) }),
+          Global.el("input", { type: "text", maxlength: "30", value: label, "aria-label": `Priority level ${i + 1} label` }),
+        ])
+      );
+    });
+  }
+
+  document.getElementById("reset-priority-labels").addEventListener("click", async () => {
+    try {
+      currentList = await Global.fetchJSON(LIST_API, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priority_labels: null }),
+      });
+      fillLabelInputs();
+      renderListHeader();
+      loadItems();
+      Global.showMessage("Priority labels reset to the defaults.", "success");
+    } catch (err) {
+      Global.showMessage(err.message, "error");
+    }
+  });
+
   showBtn.addEventListener("click", () => {
     form.name.value = currentList.name;
     form.purpose.value = currentList.purpose || "";
+    fillLabelInputs();
     form.locked.checked = currentList.locked;
     syncDeleteButton();
     form.classList.remove("hidden");
@@ -86,10 +137,16 @@ function initEditListForm() {
       currentList = await Global.fetchJSON(LIST_API, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, purpose: form.purpose.value.trim() || null, locked: form.locked.checked }),
+        body: JSON.stringify({
+          name,
+          purpose: form.purpose.value.trim() || null,
+          locked: form.locked.checked,
+          priority_labels: [...labelInputs.querySelectorAll("input")].map((input) => input.value.trim()),
+        }),
       });
       renderListHeader();
       syncDeleteButton();
+      loadItems(); // badges and dropdowns use the (possibly renamed) labels
       close();
       Global.showMessage(`Saved "${name}".`, "success");
     } catch (err) {
@@ -221,6 +278,10 @@ function renderItems(items) {
   const emptyState = document.getElementById("empty-state");
   const count = document.getElementById("item-count");
   list.innerHTML = "";
+  // Drag handles only make sense in manual mode - in priority mode the
+  // server decides the order.
+  list.classList.toggle("sort-priority", currentList.sort_mode === "priority");
+  if (sortable) sortable.option("disabled", currentList.sort_mode === "priority");
   const remaining = items.filter((i) => !i.done).length;
   count.textContent = items.length ? `${remaining} left` : "";
   emptyState.hidden = items.length !== 0;
@@ -273,6 +334,13 @@ function itemCardElement(item, { expanded = false } = {}) {
       Global.showMessage(err.message, "error");
     }
   });
+  if (!item.done) {
+    // Grabbing the row anywhere would fight tap-to-expand, so dragging is
+    // handle-only (see initSortable).
+    const handle = Global.el("span", { class: "item-drag-handle", "aria-label": "Drag to reorder", text: "⋮⋮" });
+    handle.addEventListener("click", (e) => e.stopPropagation());
+    summary.appendChild(handle);
+  }
   summary.appendChild(doneCheckbox);
 
   summary.appendChild(Global.el("span", { class: "item-summary-title", text: item.name }));
@@ -294,6 +362,12 @@ function itemCardElement(item, { expanded = false } = {}) {
     // Opening the source link shouldn't also toggle the accordion.
     domainLink.addEventListener("click", (e) => e.stopPropagation());
     summary.appendChild(domainLink);
+  }
+
+  if (item.priority && !item.done) {
+    summary.appendChild(
+      Global.el("span", { class: `item-badge item-badge-priority priority-${item.priority}`, text: priorityLabel(item.priority) })
+    );
   }
 
   summary.appendChild(Global.el("span", { class: "item-badge item-badge-muted item-badge-progress hidden" }));
@@ -321,6 +395,8 @@ function buildItemDetails(card, item) {
   const nameInput = Global.el("input", { type: "text", value: item.name, required: "required" });
   const recipientSelect = Global.el("select", {});
   populateRecipientSelect(recipientSelect, item.recipient_id);
+  const prioritySelect = Global.el("select", {});
+  populatePrioritySelect(prioritySelect, item.priority);
   const listSelect = Global.el("select", {});
   for (const l of allLists) {
     const option = Global.el("option", { value: String(l.id), text: l.name });
@@ -361,6 +437,7 @@ function buildItemDetails(card, item) {
   const fields = Global.el("div", { class: "item-fields" }, [
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Name" }), nameInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Who is it for?" }), recipientSelect]),
+    Global.el("div", { class: "field" }, [Global.el("label", { text: "Priority" }), prioritySelect]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "List" }), listSelect]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
@@ -409,11 +486,18 @@ function buildItemDetails(card, item) {
             name,
             recipient_id: recipientSelect.value ? Number(recipientSelect.value) : null,
             list_id: Number(listSelect.value),
+            priority: prioritySelect.value ? Number(prioritySelect.value) : null,
             description: descInput.value.trim() || null,
             url: urlInput.value.trim() || null,
             needed_by: Global.dateInputToISO(dateInput.value),
           }),
         });
+        if (updated.list_id === listId && updated.priority !== item.priority && currentList.sort_mode === "priority") {
+          // Priority decides the order in this mode, so the item may belong elsewhere now.
+          Global.showMessage(`Saved "${name}".`, "success");
+          loadItems();
+          return;
+        }
         if (updated.list_id !== listId) {
           const target = allLists.find((l) => l.id === updated.list_id);
           Global.showMessage(`Moved "${name}" to ${target ? target.name : "another list"}.`, "success");
@@ -503,6 +587,7 @@ function initAddItemForm() {
     const payload = {
       name,
       recipient_id: form.recipient_id.value ? Number(form.recipient_id.value) : null,
+      priority: form.priority.value ? Number(form.priority.value) : null,
       description: form.description.value.trim() || null,
       url: form.url.value.trim() || null,
       needed_by: Global.dateInputToISO(form.needed_by.value),
@@ -524,6 +609,60 @@ function initAddItemForm() {
   });
 }
 
+// --- ordering ---
+
+function initSortMode() {
+  const select = document.getElementById("sort-mode");
+  select.addEventListener("change", async () => {
+    try {
+      currentList = await Global.fetchJSON(LIST_API, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sort_mode: select.value }),
+      });
+      loadItems();
+    } catch (err) {
+      select.value = currentList.sort_mode;
+      Global.showMessage(err.message, "error");
+    }
+  });
+}
+
+// Drag-to-reorder via SortableJS, handle-only. forceFallback uses Sortable's
+// own pointer handling rather than native drag-and-drop, which doesn't work
+// for touch and is flaky for a handle nested inside a <button>. Done items
+// aren't draggable and nothing can be dropped among them - they always sit
+// at the bottom.
+function initSortable() {
+  if (typeof Sortable === "undefined") {
+    console.warn("SortableJS didn't load - drag-to-reorder is unavailable.");
+    return;
+  }
+  sortable = Sortable.create(document.getElementById("items-list"), {
+    handle: ".item-drag-handle",
+    draggable: ".item-card:not(.done)",
+    animation: 150,
+    forceFallback: true,
+    onMove: (evt) => !evt.related.classList.contains("done"),
+    onEnd: saveOrder,
+  });
+}
+
+async function saveOrder(evt) {
+  if (evt.oldIndex === evt.newIndex) return;
+  const itemIds = [...document.querySelectorAll("#items-list .item-card:not(.done)")].map((c) => Number(c.dataset.id));
+  try {
+    await Global.fetchJSON(`${LIST_API}/items/order`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_ids: itemIds }),
+    });
+  } catch (err) {
+    Global.showMessage(err.message, "error");
+    loadItems();
+  }
+}
+
 async function init() {
   if (!Number.isInteger(listId) || listId <= 0) {
     Global.showMessage("No list selected - pick one from the Lists page.", "error");
@@ -531,6 +670,8 @@ async function init() {
   }
   initEditListForm();
   initImportForm();
+  initSortMode();
+  initSortable();
   initAddItemForm();
   try {
     await loadList();

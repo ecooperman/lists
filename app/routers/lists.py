@@ -30,6 +30,8 @@ def get_list(list_id: int, db: Session = Depends(get_db)):
 
 @router.patch("/{list_id}", response_model=schemas.ItemList)
 def update_list(list_id: int, updates: schemas.ItemListUpdate, db: Session = Depends(get_db)):
+    if "sort_mode" in updates.model_fields_set and updates.sort_mode is None:
+        raise HTTPException(status_code=400, detail="sort_mode must be manual or priority")
     item_list = crud.update_list(db, list_id, updates)
     if item_list is None:
         raise HTTPException(status_code=404, detail="List not found")
@@ -63,6 +65,15 @@ def create_item(list_id: int, item: schemas.ItemCreate, db: Session = Depends(ge
     if crud.get_list(db, list_id) is None:
         raise HTTPException(status_code=404, detail="List not found")
     return crud.create_item(db, list_id, item)
+
+
+@router.put("/{list_id}/items/order", response_model=List[schemas.Item])
+def reorder_items(list_id: int, body: schemas.ItemOrderRequest, db: Session = Depends(get_db)):
+    if crud.get_list(db, list_id) is None:
+        raise HTTPException(status_code=404, detail="List not found")
+    if not crud.reorder_items(db, list_id, body.item_ids):
+        raise HTTPException(status_code=400, detail="item_ids must be unique items of this list")
+    return crud.get_items(db, list_id)
 
 
 # Import pasted notes as items - one per "-" line. Two steps so the UI can

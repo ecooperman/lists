@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import case, func
@@ -121,18 +121,26 @@ def delete_list(db: Session, list_id: int, force: bool = False):
 
 
 def get_items(db: Session, list_id: int):
+    sort_mode = db.query(models.ItemList.sort_mode).filter(models.ItemList.id == list_id).scalar()
+    # Done items always sink to the bottom. Within each group: the list's own
+    # manual order, or - in priority mode - highest priority first with ties
+    # kept in manual order (id only breaks exact sort_order ties).
+    order = [models.Item.done]
+    if sort_mode == "priority":
+        order.append(models.Item.priority.desc().nulls_last())
+    order += [models.Item.sort_order, models.Item.id]
     return (
         db.query(models.Item)
         .options(joinedload(models.Item.recipient))
         .filter(models.Item.list_id == list_id)
-        .order_by(
-            models.Item.done,
-            models.Item.needed_by.is_(None),
-            models.Item.needed_by,
-            models.Item.created_at.desc(),
-        )
+        .order_by(*order)
         .all()
     )
+
+
+def _next_sort_order(db: Session, list_id: int) -> int:
+    top = db.query(func.max(models.Item.sort_order)).filter(models.Item.list_id == list_id).scalar()
+    return 0 if top is None else top + 1
 
 
 def get_item(db: Session, item_id: int):
@@ -145,7 +153,7 @@ def get_item(db: Session, item_id: int):
 
 
 def create_item(db: Session, list_id: int, item: schemas.ItemCreate):
-    db_item = models.Item(list_id=list_id, **item.model_dump())
+    db_item = models.Item(list_id=list_id, sort_order=_next_sort_order(db, list_id), **item.model_dump())
     db.add(db_item)
     db.commit()
     db.refresh(db_item)
@@ -153,19 +161,31 @@ def create_item(db: Session, list_id: int, item: schemas.ItemCreate):
 
 
 def create_items(db: Session, list_id: int, names) -> list:
-    """Create several items in one commit, one per name."""
-    # The list shows newest-first, so stamp the first pasted line as the
-    # newest - otherwise a pasted list would display upside down.
-    now = datetime.utcnow()
-    db_items = [
-        models.Item(list_id=list_id, name=name, created_at=now - timedelta(microseconds=i))
-        for i, name in enumerate(names)
-    ]
+    """Create several items in one commit, one per name, appended in order."""
+    first = _next_sort_order(db, list_id)
+    db_items = [models.Item(list_id=list_id, name=name, sort_order=first + i) for i, name in enumerate(names)]
     db.add_all(db_items)
     db.commit()
     for db_item in db_items:
         db.refresh(db_item)
     return db_items
+
+
+def reorder_items(db: Session, list_id: int, item_ids) -> bool:
+    """Give the listed items positions 0..n-1 in the order given. False (and
+    nothing changed) if any id is repeated or isn't an item of this list."""
+    if len(set(item_ids)) != len(item_ids):
+        return False
+    rows = {
+        row.id: row
+        for row in db.query(models.Item).filter(models.Item.list_id == list_id, models.Item.id.in_(item_ids))
+    }
+    if len(rows) != len(item_ids):
+        return False
+    for position, item_id in enumerate(item_ids):
+        rows[item_id].sort_order = position
+    db.commit()
+    return True
 
 
 def update_item(db: Session, item_id: int, updates: schemas.ItemUpdate):
@@ -177,6 +197,9 @@ def update_item(db: Session, item_id: int, updates: schemas.ItemUpdate):
         # Track when an item was checked off so the UI can show it, and
         # clear it again if someone un-checks the box.
         db_item.done_at = datetime.utcnow() if fields["done"] else None
+    if "list_id" in fields and fields["list_id"] != db_item.list_id:
+        # Moved to another list: land at the end of it.
+        db_item.sort_order = _next_sort_order(db, fields["list_id"])
     for field, value in fields.items():
         setattr(db_item, field, value)
     db.commit()
