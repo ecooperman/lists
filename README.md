@@ -211,6 +211,15 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
   summary (name, recipient, source domain, date) that expands in place into
   the full edit form, rather than a separate view/edit mode or a modal. The
   edit form's "List" dropdown moves the item to another list.
+- Editing an item has two modes, chosen per device. With a mouse
+  (`Global.supportsInlineEdit()`, from shared-assets) each field in the
+  expanded card reads as text: click it (or Tab to it and press Enter) to
+  edit, and clicking away / Tab / Enter saves just that field, Esc cancels,
+  a dropdown saves when you pick, and the summary row updates in place. On
+  touch devices - where tap-to-edit competes with scrolling and a
+  keyboard-dismiss would trigger a save - you get the classic form with one
+  Save button instead. Both are driven by the same field definitions in
+  `itemFieldDefs()` in `static/list.js`.
 - "Add Item" is a toggle button that reveals an inline add form (again
   mirroring the jobs admin page's "+ Add New Job Opportunity"), not a modal.
 - Ordering: each list is in manual order by default - drag an item by the

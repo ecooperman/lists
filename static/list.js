@@ -301,19 +301,55 @@ function applyProgress(card, item, pct) {
   badge.classList.toggle("hidden", item.done || pct === 0);
 }
 
-// Each item is a collapsed-by-default accordion: a single-line summary row
-// (name, recipient, source domain, date) that expands into the full edit
-// form in place - no separate "view" vs "edit" mode, and no modal. This
-// mirrors the jobs admin page (jobs.html/jobs.js) in time-management, which
-// solves the same "lots of rows, only show the full form for the one you're
-// touching" problem the same way.
-function itemCardElement(item, { expanded = false } = {}) {
-  const card = Global.el("div", {
-    class: "item-card" + (expanded ? " expanded" : "") + (item.done ? " done" : ""),
-    "data-id": item.id,
-  });
+// "Dec 25, 2026" for a plain YYYY-MM-DD value (inline-edit display only; the
+// summary row's date badge stays the short "Dec 25").
+function formatLongDate(isoDate) {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
 
-  const summary = Global.el("button", { type: "button", class: "item-summary", "aria-expanded": String(expanded) });
+// One definition per editable item field, used by both ways of editing it
+// (see buildItemDetails). `get` reads the field off an item as the string an
+// input holds; `toApi` turns what the input holds into the PATCH value.
+function itemFieldDefs() {
+  const contactOptions = [{ value: "", label: "Unassigned" }, ...contacts.map((c) => ({ value: String(c.id), label: contactName(c) }))];
+  const priorityOptions = [{ value: "", label: "None" }, ...currentList.priority_labels.map((label, i) => ({ value: String(i + 1), label }))];
+  const listOptions = allLists.map((l) => ({ value: String(l.id), label: l.name }));
+  return [
+    { key: "name", label: "Name", type: "text", required: true, requiredMessage: "Name is required.", get: (it) => it.name, toApi: (v) => v },
+    { key: "recipient_id", label: "Who is it for?", type: "select", options: contactOptions, get: (it) => (it.recipient_id ? String(it.recipient_id) : ""), toApi: (v) => (v ? Number(v) : null) },
+    { key: "priority", label: "Priority", type: "select", options: priorityOptions, get: (it) => (it.priority ? String(it.priority) : ""), toApi: (v) => (v ? Number(v) : null) },
+    { key: "list_id", label: "List", type: "select", options: listOptions, get: (it) => String(it.list_id), toApi: (v) => Number(v) },
+    { key: "description", label: "Description", type: "textarea", get: (it) => it.description || "", toApi: (v) => v || null },
+    { key: "url", label: "URL", type: "url", get: (it) => it.url || "", toApi: (v) => v || null },
+    { key: "needed_by", label: "Needed by", type: "date", format: formatLongDate, get: (it) => Global.toISODate(it.needed_by), toApi: (v) => Global.dateInputToISO(v) },
+  ];
+}
+
+// The ordinary form control for a field (touch devices, see buildItemDetails).
+function formInput(def, value) {
+  let input;
+  if (def.type === "select") {
+    input = Global.el("select", {}, def.options.map((o) => Global.el("option", { value: o.value, text: o.label })));
+  } else if (def.type === "textarea") {
+    input = Global.el("textarea", { rows: "2" });
+  } else {
+    input = Global.el("input", { type: def.type });
+  }
+  input.value = value;
+  return input;
+}
+
+function readFormInput(def, input) {
+  return def.type === "select" || def.type === "date" ? input.value : input.value.trim();
+}
+
+// The summary row's contents. Rebuilt in place (refreshSummary) whenever an
+// item's fields change - inline editing saves one field at a time, and
+// re-rendering the whole card each time would steal focus from the field
+// you just tabbed into.
+function renderSummary(card, summary, item) {
+  summary.replaceChildren();
 
   const doneCheckbox = Global.el("input", { type: "checkbox", class: "item-summary-done-toggle", "aria-label": "Mark done" });
   doneCheckbox.checked = !!item.done;
@@ -378,6 +414,28 @@ function itemCardElement(item, { expanded = false } = {}) {
   }
 
   summary.appendChild(Global.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
+}
+
+function refreshSummary(card, item) {
+  card.classList.toggle("done", !!item.done);
+  renderSummary(card, card.querySelector(".item-summary"), item);
+  applyProgress(card, item, item.progress);
+}
+
+// Each item is a collapsed-by-default accordion: a single-line summary row
+// (name, recipient, source domain, date) that expands into the full edit
+// form in place - no separate "view" vs "edit" mode, and no modal. This
+// mirrors the jobs admin page (jobs.html/jobs.js) in time-management, which
+// solves the same "lots of rows, only show the full form for the one you're
+// touching" problem the same way.
+function itemCardElement(item, { expanded = false } = {}) {
+  const card = Global.el("div", {
+    class: "item-card" + (expanded ? " expanded" : "") + (item.done ? " done" : ""),
+    "data-id": item.id,
+  });
+
+  const summary = Global.el("button", { type: "button", class: "item-summary", "aria-expanded": String(expanded) });
+  renderSummary(card, summary, item);
 
   const details = Global.el("div", { class: "item-details" + (expanded ? "" : " hidden") });
 
@@ -389,24 +447,32 @@ function itemCardElement(item, { expanded = false } = {}) {
   return card;
 }
 
+// The expanded card has two ways to edit, chosen per device:
+//  - mouse (Global.supportsInlineEdit): each field reads as text, click to
+//    edit, leaving the field saves just that field, Esc cancels. No Save
+//    button.
+//  - touch (and if the shared helper isn't loaded): the classic form - every
+//    field an input, one Save button. Tap-to-edit fights scrolling on a
+//    phone and blur-saves misfire when the keyboard dismisses.
 function buildItemDetails(card, item) {
   const wrap = Global.el("div", { class: "item-details-inner" });
+  const defs = itemFieldDefs();
+  const inline = typeof Global.inlineEdit === "function" && Global.supportsInlineEdit();
 
-  const nameInput = Global.el("input", { type: "text", value: item.name, required: "required" });
-  const recipientSelect = Global.el("select", {});
-  populateRecipientSelect(recipientSelect, item.recipient_id);
-  const prioritySelect = Global.el("select", {});
-  populatePrioritySelect(prioritySelect, item.priority);
-  const listSelect = Global.el("select", {});
-  for (const l of allLists) {
-    const option = Global.el("option", { value: String(l.id), text: l.name });
-    if (l.id === item.list_id) option.selected = true;
-    listSelect.appendChild(option);
+  const patchItem = (body) =>
+    Global.fetchJSON(`${ITEMS_API}/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  // The scrape preview is only shown while the item has a URL, so inline
+  // edits of the URL need to be able to rebuild just this part.
+  const scrapeHost = Global.el("div");
+  function renderScrape() {
+    scrapeHost.replaceChildren();
+    if (item.url) scrapeHost.appendChild(buildScrapeSection(card, item));
   }
-  const descInput = Global.el("textarea", { rows: "2" });
-  descInput.value = item.description || "";
-  const urlInput = Global.el("input", { type: "url", value: item.url || "" });
-  const dateInput = Global.el("input", { type: "date", value: Global.toISODate(item.needed_by) });
 
   // Steps of 10 rather than free entry. Dragging fills the row live ("input"
   // fires continuously); the value is saved on its own when you let go
@@ -420,11 +486,7 @@ function buildItemDetails(card, item) {
   });
   progressInput.addEventListener("change", async () => {
     try {
-      const updated = await Global.fetchJSON(`${ITEMS_API}/${item.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ progress: Number(progressInput.value) }),
-      });
+      const updated = await patchItem({ progress: Number(progressInput.value) });
       item.progress = updated.progress;
     } catch (err) {
       progressInput.value = String(item.progress);
@@ -434,24 +496,90 @@ function buildItemDetails(card, item) {
     }
   });
 
-  const fields = Global.el("div", { class: "item-fields" }, [
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Name" }), nameInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Who is it for?" }), recipientSelect]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Priority" }), prioritySelect]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "List" }), listSelect]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Needed by" }), dateInput]),
+  // Where does the item belong after a save? Returns true if the page
+  // reloaded the whole list (so this card is gone or about to be replaced).
+  function reloadedAfterSave(updated, name) {
+    if (updated.list_id !== listId) {
+      const target = allLists.find((l) => l.id === updated.list_id);
+      Global.showMessage(`Moved "${name}" to ${target ? target.name : "another list"}.`, "success");
+      loadItems();
+      return true;
+    }
+    return false;
+  }
+
+  const fields = Global.el("div", { class: "item-fields" });
+  let saveBtn = null;
+
+  if (inline) {
+    for (const def of defs) {
+      const field = Global.inlineEdit({
+        type: def.type,
+        value: def.get(item),
+        options: def.options,
+        required: def.required,
+        requiredMessage: def.requiredMessage,
+        format: def.format,
+        async onSave(raw) {
+          const updated = await patchItem({ [def.key]: def.toApi(raw) });
+          Object.assign(item, updated);
+          if (reloadedAfterSave(updated, item.name)) return def.get(updated);
+          if (def.key === "priority" && currentList.sort_mode === "priority") {
+            // Priority decides the order in this mode, so the item may belong elsewhere now.
+            loadItems();
+            return def.get(updated);
+          }
+          refreshSummary(card, item);
+          if (def.key === "url") renderScrape();
+          return def.get(updated);
+        },
+      });
+      fields.appendChild(Global.el("div", { class: "field" }, [Global.el("label", { text: def.label }), field]));
+    }
+  } else {
+    const inputs = Object.fromEntries(defs.map((def) => [def.key, formInput(def, def.get(item))]));
+    for (const def of defs) {
+      fields.appendChild(Global.el("div", { class: "field" }, [Global.el("label", { text: def.label }), inputs[def.key]]));
+    }
+    saveBtn = Global.el("button", {
+      type: "button",
+      class: "save-btn",
+      text: "Save",
+      onclick: async () => {
+        const name = readFormInput(defs[0], inputs.name);
+        if (!name) {
+          Global.showMessage("Name is required.", "error");
+          return;
+        }
+        try {
+          const body = Object.fromEntries(defs.map((def) => [def.key, def.toApi(readFormInput(def, inputs[def.key]))]));
+          const updated = await patchItem(body);
+          if (reloadedAfterSave(updated, name)) return;
+          if (updated.priority !== item.priority && currentList.sort_mode === "priority") {
+            // Priority decides the order in this mode, so the item may belong elsewhere now.
+            Global.showMessage(`Saved "${name}".`, "success");
+            loadItems();
+            return;
+          }
+          Global.showMessage(`Saved "${name}".`, "success");
+          card.replaceWith(itemCardElement(updated, { expanded: true }));
+        } catch (err) {
+          Global.showMessage(err.message, "error");
+        }
+      },
+    });
+  }
+
+  fields.appendChild(
     Global.el("div", { class: "field" }, [
       Global.el("label", { text: "Progress" }),
       Global.el("div", { class: "progress-control" }, [progressInput, progressValue]),
-    ]),
-  ]);
+    ])
+  );
   wrap.appendChild(fields);
 
-  if (item.url) {
-    wrap.appendChild(buildScrapeSection(card, item));
-  }
+  renderScrape();
+  wrap.appendChild(scrapeHost);
 
   const actions = Global.el("div", { class: "item-actions" });
 
@@ -468,51 +596,8 @@ function buildItemDetails(card, item) {
     },
   });
 
-  const saveBtn = Global.el("button", {
-    type: "button",
-    class: "save-btn",
-    text: "Save",
-    onclick: async () => {
-      const name = nameInput.value.trim();
-      if (!name) {
-        Global.showMessage("Name is required.", "error");
-        return;
-      }
-      try {
-        const updated = await Global.fetchJSON(`${ITEMS_API}/${item.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name,
-            recipient_id: recipientSelect.value ? Number(recipientSelect.value) : null,
-            list_id: Number(listSelect.value),
-            priority: prioritySelect.value ? Number(prioritySelect.value) : null,
-            description: descInput.value.trim() || null,
-            url: urlInput.value.trim() || null,
-            needed_by: Global.dateInputToISO(dateInput.value),
-          }),
-        });
-        if (updated.list_id === listId && updated.priority !== item.priority && currentList.sort_mode === "priority") {
-          // Priority decides the order in this mode, so the item may belong elsewhere now.
-          Global.showMessage(`Saved "${name}".`, "success");
-          loadItems();
-          return;
-        }
-        if (updated.list_id !== listId) {
-          const target = allLists.find((l) => l.id === updated.list_id);
-          Global.showMessage(`Moved "${name}" to ${target ? target.name : "another list"}.`, "success");
-          loadItems();
-          return;
-        }
-        Global.showMessage(`Saved "${name}".`, "success");
-        card.replaceWith(itemCardElement(updated, { expanded: true }));
-      } catch (err) {
-        Global.showMessage(err.message, "error");
-      }
-    },
-  });
-
-  actions.append(deleteBtn, saveBtn);
+  actions.appendChild(deleteBtn);
+  if (saveBtn) actions.appendChild(saveBtn);
   wrap.appendChild(actions);
   return wrap;
 }
