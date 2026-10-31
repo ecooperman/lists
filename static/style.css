@@ -124,57 +124,11 @@
   gap: 8px;
 }
 
-/* Each previewed item gets its own box (same look as the item cards on the
-   list page) so a row's priority badge is visibly tied to its item. */
-.preview-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.preview-item.done {
-  opacity: 0.75;
-}
-
-/* The handle's normal vertical padding would make rows that have one taller
-   than rows that don't (done items). */
-.preview-item .item-drag-handle {
-  padding: 0 2px 0 0;
-}
-
-.preview-check {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  box-sizing: border-box;
-  border: 1.5px solid var(--border);
-  border-radius: 4px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: #fff;
-}
-
-.preview-item.done .preview-check {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.preview-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 14px;
-}
-
-.preview-item.done .preview-name {
-  text-decoration: line-through;
-  color: var(--muted);
+/* The items are ordinary item cards (item-card.js). The theme rotates the
+   chevron of everything inside an expanded card, which would turn the closed
+   item cards' chevrons too. */
+.item-card.expanded .item-card:not(.expanded) .item-chevron {
+  transform: none;
 }
 
 .preview-empty {
@@ -262,7 +216,7 @@
   touch-action: none;
 }
 
-#items-list.sort-priority .item-drag-handle,
+.sort-priority .item-drag-handle,
 #lists-list.no-reorder .list-drag-handle {
   display: none;
 }

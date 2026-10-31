@@ -205,9 +205,10 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
 ## Notes
 
 - Pages: `/` is the lists index (each list with how many items are left; click
-  one to expand a preview of its items - in manual order you can drag them into
-  a new order right there - with an "Open list" link to add, remove or edit
-  them),
+  one to expand its items, which are the same cards as on the list's own page:
+  rename, check off, edit any field, delete or (in manual order) drag them into
+  a new order right there - with an "Open list" link for adding or importing
+  items and the list's settings),
   `/list.html?id=N` is one list's items (the same `page.html?id=N` pattern
   trip-planning uses), `/contacts.html` manages contacts and
   `/categories.html` manages categories. Editing,
@@ -262,7 +263,12 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
   keyboard-dismiss would trigger a save - the whole header row is the
   expand/collapse button and the expanded card is the classic form with one
   Save button. Both are driven by the same field definitions in
-  `itemFieldDefs()` in `static/list.js`.
+  `itemFieldDefs()` in `static/item-card.js`, the module that builds an item's
+  card for both the list page (`list.js`) and the expanded lists on the index
+  (`lists.js`). Each page hands it a small context (the list, all lists, the
+  contacts, and a `reload()`), so an item behaves the same in either place; on
+  the index, checking off, deleting or moving an item also refreshes the
+  header counts and any other open list it was moved into.
 - "Add Item" is a toggle button that reveals an inline add form (again
   mirroring the jobs admin page's "+ Add New Job Opportunity"), not a modal.
 - Ordering: each list is in manual order by default - drag an item by the

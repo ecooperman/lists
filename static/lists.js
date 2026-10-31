@@ -1,8 +1,9 @@
 // Lists index (index.html): every list, with a count of what's left in it,
-// plus the add-list form. Each list is an accordion that previews its items
-// and lets you drag them into a new order; adding, removing and editing items
-// happens on the list's own page (list.html?id=N, list.js), linked from
-// inside the expanded card.
+// plus the add-list form. Each list is an accordion that expands into its
+// items as the same cards the list's own page shows (item-card.js): edit,
+// check off, delete or drag them into a new order without leaving this page.
+// Adding items, importing and the list's settings are on its own page
+// (list.html?id=N, list.js), linked from inside the expanded card.
 
 // --- view preferences (per device, so kept in localStorage) ---
 
@@ -28,6 +29,10 @@ let categories = [];
 let categoriesById = {};
 let listsSort = loadPref("lists.sort", "category"); // "category" (grouped under headings) | "manual" (flat)
 let categoryFilter = loadPref("lists.categoryFilter", []); // category ids as strings, "none" = uncategorized
+let contacts = null; // loaded the first time a list is expanded
+// What's on screen per list id, so a change to one list's items can update its
+// header count (and any other open list an item was moved into).
+const listViews = new Map();
 let listsSortable = null; // the flat view's
 let groupSortables = []; // one per category group in the grouped view
 
@@ -83,6 +88,7 @@ function renderLists({ reopenId = null } = {}) {
 
   groupSortables.forEach((sortable) => sortable.destroy());
   groupSortables = [];
+  listViews.clear();
   container.replaceChildren();
 
   if (grouped) {
@@ -297,8 +303,9 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
     right.appendChild(Global.el("span", { class: "item-badge item-badge-muted", text: "Locked" }));
   }
 
-  const countText = itemList.item_count ? `${itemList.open_count} left` : "Empty";
-  right.appendChild(Global.el("span", { class: "item-badge item-badge-accent", text: countText }));
+  const countBadge = Global.el("span", { class: "item-badge item-badge-accent" });
+  setCountBadge(countBadge, itemList);
+  right.appendChild(countBadge);
   right.appendChild(Global.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
 
   // `right` is what toggles the card: the zone on mouse devices, the whole
@@ -315,6 +322,7 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
   });
 
   card.append(summary, details);
+  listViews.set(itemList.id, { card, countBadge, reloadPreview: () => loadPreview(itemList, preview) });
 
   if (expanded) {
     card.classList.add("expanded");
@@ -332,9 +340,37 @@ function setCategoryPill(slot, itemList) {
   slot.replaceChildren(...(category ? [categoryPill(category)] : []));
 }
 
-// A list's items, in the same order the list page shows them, plus the way
-// into the list page where they can be changed. In manual order they can be
-// dragged into a new order right here (same rules as the list page).
+function setCountBadge(badge, itemList) {
+  badge.textContent = itemList.item_count ? `${itemList.open_count} left` : "Empty";
+}
+
+// After an edit in one list's items (checked off, deleted, moved to another
+// list): bring the header counts back in step with the server. An open list
+// whose items just changed because something was moved into it reloads too.
+async function refreshCounts(editedId) {
+  let fresh;
+  try {
+    fresh = await Global.fetchJSON("/api/lists");
+  } catch (err) {
+    console.error("Failed to refresh list counts", err);
+    return;
+  }
+  for (const row of fresh) {
+    const mine = lists.find((l) => l.id === row.id);
+    if (!mine) continue;
+    const changed = mine.item_count !== row.item_count || mine.open_count !== row.open_count;
+    mine.item_count = row.item_count;
+    mine.open_count = row.open_count;
+    const view = listViews.get(row.id);
+    if (!view) continue;
+    setCountBadge(view.countBadge, mine);
+    if (changed && row.id !== editedId && view.card.classList.contains("expanded")) view.reloadPreview();
+  }
+}
+
+// A list's items as cards, in the same order the list page shows them, plus
+// the way into the list page. In manual order they can be dragged into a new
+// order right here (same rules as the list page).
 async function loadPreview(itemList, preview) {
   let list, items;
   try {
@@ -343,7 +379,7 @@ async function loadPreview(itemList, preview) {
     // never be offered for a list that has since been switched to priority.
     [list, items] = await Global.withLoading(
       preview,
-      Promise.all([Global.fetchJSON(`/api/lists/${itemList.id}`), Global.fetchJSON(`/api/lists/${itemList.id}/items`)])
+      Promise.all([Global.fetchJSON(`/api/lists/${itemList.id}`), Global.fetchJSON(`/api/lists/${itemList.id}/items`), ensureContacts()])
     );
   } catch (err) {
     Global.showMessage(err.message, "error");
@@ -355,13 +391,27 @@ async function loadPreview(itemList, preview) {
   if (!items.length) {
     preview.appendChild(Global.el("p", { class: "preview-empty", text: "No items yet." }));
   } else {
-    const ul = Global.el(
-      "ul",
-      { class: "preview-list" },
-      items.map((item) => previewItemElement(list, item, manual))
+    // What an item card (item-card.js) needs to know about where it is.
+    const ctx = {
+      list,
+      get lists() {
+        return lists;
+      },
+      contacts,
+      reload() {
+        loadPreview(itemList, preview);
+        refreshCounts(itemList.id);
+      },
+    };
+    // Drag handles only make sense in manual mode (the .sort-priority class
+    // hides them) - in priority mode the server decides the order.
+    const stack = Global.el(
+      "div",
+      { class: "preview-list" + (manual ? "" : " sort-priority") },
+      items.map((item) => ItemCard.create(item, ctx))
     );
-    preview.appendChild(ul);
-    if (manual) initPreviewSortable(itemList, preview, ul);
+    preview.appendChild(stack);
+    if (manual) initPreviewSortable(itemList, preview, stack);
   }
 
   preview.appendChild(
@@ -371,46 +421,36 @@ async function loadPreview(itemList, preview) {
   );
 }
 
-function previewItemElement(list, item, manual) {
-  const row = Global.el("li", { class: "preview-item" + (item.done ? " done" : ""), "data-id": item.id });
-  if (manual && !item.done) {
-    row.appendChild(Global.el("span", { class: "item-drag-handle", "aria-label": "Drag to reorder", text: "⋮⋮" }));
+// Contacts feed the "who is it for" dropdown on each item. Fetched once; if it
+// fails the dropdown just offers Unassigned rather than blocking the list.
+async function ensureContacts() {
+  if (contacts) return contacts;
+  try {
+    contacts = await Global.fetchJSON("/api/contacts");
+  } catch (err) {
+    console.error("Failed to load contacts", err);
+    return [];
   }
-  row.append(
-    Global.el("span", { class: "preview-check", "aria-label": item.done ? "Done" : "Not done", text: item.done ? "✓" : "" }),
-    Global.el("span", { class: "preview-name", text: item.name })
-  );
-  if (item.priority && !item.done) {
-    row.appendChild(
-      Global.el("span", {
-        class: `item-badge item-badge-priority priority-${item.priority}`,
-        text: list.priority_labels[item.priority - 1],
-      })
-    );
-  }
-  if (item.progress && !item.done) {
-    row.appendChild(Global.el("span", { class: "item-badge item-badge-muted", text: `${item.progress}%` }));
-  }
-  return row;
+  return contacts;
 }
 
 // Same drag rules as the list page (list.js initSortable): handle-only, done
 // items aren't draggable and nothing drops among them, saved through the same
 // order endpoint.
-function initPreviewSortable(itemList, preview, ul) {
+function initPreviewSortable(itemList, preview, stack) {
   if (typeof Sortable === "undefined") {
     console.warn("SortableJS didn't load - drag-to-reorder is unavailable.");
     return;
   }
-  Sortable.create(ul, {
+  Sortable.create(stack, {
     handle: ".item-drag-handle",
-    draggable: ".preview-item:not(.done)",
+    draggable: ".item-card:not(.done)",
     animation: 150,
     forceFallback: true,
     onMove: (evt) => !evt.related.classList.contains("done"),
     async onEnd(evt) {
       if (evt.oldIndex === evt.newIndex) return;
-      const itemIds = [...ul.querySelectorAll(".preview-item:not(.done)")].map((li) => Number(li.dataset.id));
+      const itemIds = [...stack.querySelectorAll(":scope > .item-card:not(.done)")].map((card) => Number(card.dataset.id));
       try {
         await Global.fetchJSON(`/api/lists/${itemList.id}/items/order`, {
           method: "PUT",
