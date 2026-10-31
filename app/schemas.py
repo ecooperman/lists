@@ -30,6 +30,39 @@ class Contact(ContactBase):
     id: int
 
 
+class CategoryBase(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
+    text_color: Literal["dark", "light"] = "dark"
+
+
+class CategoryCreate(CategoryBase):
+    pass
+
+
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=40)
+    color: Optional[str] = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    text_color: Optional[Literal["dark", "light"]] = None
+
+
+class Category(CategoryBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    sort_order: int
+
+
+class CategoryReorderRequest(BaseModel):
+    # The full new order as category ids; the server resequences everyone.
+    ordered_ids: List[int]
+
+
+class ListOrderRequest(BaseModel):
+    # List ids in the order they should appear, top first.
+    list_ids: List[int]
+
+
 class ItemListBase(BaseModel):
     name: str
     purpose: Optional[str] = None
@@ -48,6 +81,7 @@ class ItemListUpdate(BaseModel):
     purpose: Optional[str] = None
     locked: Optional[bool] = None
     sort_mode: Optional[SortMode] = None
+    category_id: Optional[int] = None  # null clears it
     # Exactly five labels for priority levels 1-5; a blank one falls back to
     # its default, and null resets all five.
     priority_labels: Optional[List[PriorityLabel]] = Field(default=None, min_length=5, max_length=5)
@@ -57,7 +91,9 @@ class ItemList(ItemListBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    sort_order: int
     locked: bool
+    category_id: Optional[int] = None
     sort_mode: SortMode
     priority_labels: List[str]
     created_at: datetime

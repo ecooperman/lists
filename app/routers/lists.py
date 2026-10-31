@@ -20,6 +20,13 @@ def create_list(item_list: schemas.ItemListCreate, db: Session = Depends(get_db)
     return crud.create_list(db, item_list)
 
 
+@router.put("/order", response_model=List[schemas.ItemList])
+def reorder_lists(body: schemas.ListOrderRequest, db: Session = Depends(get_db)):
+    if not crud.reorder_lists(db, body.list_ids):
+        raise HTTPException(status_code=400, detail="list_ids must be unique, existing lists")
+    return crud.get_lists(db)
+
+
 @router.get("/{list_id}", response_model=schemas.ItemList)
 def get_list(list_id: int, db: Session = Depends(get_db)):
     item_list = crud.get_list(db, list_id)
@@ -32,6 +39,8 @@ def get_list(list_id: int, db: Session = Depends(get_db)):
 def update_list(list_id: int, updates: schemas.ItemListUpdate, db: Session = Depends(get_db)):
     if "sort_mode" in updates.model_fields_set and updates.sort_mode is None:
         raise HTTPException(status_code=400, detail="sort_mode must be manual or priority")
+    if updates.category_id is not None and crud.get_category(db, updates.category_id) is None:
+        raise HTTPException(status_code=404, detail="Category not found")
     item_list = crud.update_list(db, list_id, updates)
     if item_list is None:
         raise HTTPException(status_code=404, detail="List not found")

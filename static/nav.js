@@ -9,5 +9,6 @@ const onListsPage = location.pathname === "/" || location.pathname === "/list.ht
 Global.buildNav([
   { href: "/", icon: "list", label: "Lists", active: onListsPage },
   { href: "/contacts.html", icon: "person", label: "Contacts", active: location.pathname === "/contacts.html" },
+  { href: "/categories.html", icon: "tag", label: "Categories", active: location.pathname === "/categories.html" },
   { icon: "refresh", label: "Refresh", onclick: () => location.reload() },
 ]);

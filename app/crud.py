@@ -49,6 +49,68 @@ def delete_contact(db: Session, contact_id: int) -> str:
     return "ok"
 
 
+# --- categories ---
+
+
+def get_categories(db: Session):
+    return db.query(models.Category).order_by(models.Category.sort_order, models.Category.id).all()
+
+
+def get_category(db: Session, category_id: int):
+    return db.query(models.Category).filter(models.Category.id == category_id).first()
+
+
+def category_name_taken(db: Session, name: str, exclude_id: Optional[int] = None) -> bool:
+    query = db.query(models.Category).filter(func.lower(models.Category.name) == name.strip().lower())
+    if exclude_id is not None:
+        query = query.filter(models.Category.id != exclude_id)
+    return query.first() is not None
+
+
+def create_category(db: Session, category: schemas.CategoryCreate):
+    # Appended to the end with gaps (max+10), same as trip-planning's.
+    top = db.query(func.max(models.Category.sort_order)).scalar() or 0
+    data = category.model_dump()
+    data["name"] = data["name"].strip()
+    db_category = models.Category(**data, sort_order=top + 10)
+    db.add(db_category)
+    db.commit()
+    db.refresh(db_category)
+    return db_category
+
+
+def update_category(db: Session, category_id: int, updates: schemas.CategoryUpdate):
+    db_category = get_category(db, category_id)
+    if db_category is None:
+        return None
+    for field, value in updates.model_dump(exclude_unset=True).items():
+        setattr(db_category, field, value.strip() if field == "name" and value else value)
+    db.commit()
+    db.refresh(db_category)
+    return db_category
+
+
+def reorder_categories(db: Session, ordered_ids):
+    by_id = {c.id: c for c in db.query(models.Category).filter(models.Category.id.in_(ordered_ids))}
+    for index, category_id in enumerate(ordered_ids):
+        if category_id in by_id:  # a stale id (deleted elsewhere) is skipped, not an error
+            by_id[category_id].sort_order = (index + 1) * 10
+    db.commit()
+    return get_categories(db)
+
+
+def delete_category(db: Session, category_id: int) -> str:
+    db_category = get_category(db, category_id)
+    if db_category is None:
+        return "not_found"
+    # Same guard as contacts: never silently orphan lists.
+    if db.query(models.ItemList).filter(models.ItemList.category_id == category_id).first() is not None:
+        return "in_use"
+    db.delete(db_category)
+    db.commit()
+    return "ok"
+
+
 # --- lists ---
 
 
@@ -68,7 +130,7 @@ def attach_counts(db: Session, lists):
 
 
 def get_lists(db: Session):
-    rows = db.query(models.ItemList).order_by(models.ItemList.name).all()
+    rows = db.query(models.ItemList).order_by(models.ItemList.sort_order, models.ItemList.id).all()
     return attach_counts(db, rows)
 
 
@@ -79,8 +141,27 @@ def get_list(db: Session, list_id: int):
     return row
 
 
+def _next_list_order(db: Session) -> int:
+    top = db.query(func.max(models.ItemList.sort_order)).scalar()
+    return 0 if top is None else top + 1
+
+
+def reorder_lists(db: Session, list_ids) -> bool:
+    """Give the listed lists positions 0..n-1 in the order given. False (and
+    nothing changed) if an id repeats or isn't a list."""
+    if len(set(list_ids)) != len(list_ids):
+        return False
+    rows = {row.id: row for row in db.query(models.ItemList).filter(models.ItemList.id.in_(list_ids))}
+    if len(rows) != len(list_ids):
+        return False
+    for position, list_id in enumerate(list_ids):
+        rows[list_id].sort_order = position
+    db.commit()
+    return True
+
+
 def create_list(db: Session, item_list: schemas.ItemListCreate):
-    db_list = models.ItemList(**item_list.model_dump())
+    db_list = models.ItemList(sort_order=_next_list_order(db), **item_list.model_dump())
     db.add(db_list)
     db.commit()
     db.refresh(db_list)

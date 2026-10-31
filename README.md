@@ -37,10 +37,14 @@ for something richer without touching the API.
 
 List endpoints:
 
-- `GET /api/lists` - all lists, each with `item_count` and `open_count`
+- `GET /api/lists` - all lists in their manual order, each with `item_count`
+  and `open_count`
+- `PUT /api/lists/order` - body `{"list_ids": [...]}`; saves that order for the
+  lists index (400 if an id repeats or doesn't exist)
 - `POST /api/lists` - create a list (`name` required, `purpose` optional)
 - `GET /api/lists/{id}` - fetch one list
-- `PATCH /api/lists/{id}` - update `name` / `purpose` / `locked`, plus
+- `PATCH /api/lists/{id}` - update `name` / `purpose` / `locked` / `category_id`
+  (`null` clears it), plus
   `sort_mode` (`manual` or `priority`) and `priority_labels` (exactly five
   names for priority levels 1-5; a blank one falls back to its default, `null`
   resets all five). Every list response carries `priority_labels` fully
@@ -67,6 +71,15 @@ lines after it are treated as the same item wrapped onto another line (a stray
 line break from copy/paste) and joined onto its name with a space. Text before
 the first dash, blank lines, and `---` separators are ignored (see
 `app/importer.py`).
+
+Category endpoints (labels a list can belong to, managed on `/categories.html`):
+
+- `GET /api/categories` - all categories in their manual order
+- `POST /api/categories` - create one (`name`, `color` as `#rrggbb`, and
+  `text_color` `dark`/`light`); appended to the end, 409 on a duplicate name
+- `PATCH /api/categories/{id}` - rename / recolor
+- `POST /api/categories/reorder` - body `{"ordered_ids": [...]}`
+- `DELETE /api/categories/{id}` - 409s while any list still uses it
 
 Item endpoints (acting on one existing item):
 
@@ -192,12 +205,32 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
 ## Notes
 
 - Pages: `/` is the lists index (each list with how many items are left; click
-  one to expand a read-only preview of its items, with an "Open list" link to
-  change them),
+  one to expand a preview of its items - in manual order you can drag them into
+  a new order right there - with an "Open list" link to add, remove or edit
+  them),
   `/list.html?id=N` is one list's items (the same `page.html?id=N` pattern
-  trip-planning uses), and `/contacts.html` manages contacts. Editing,
+  trip-planning uses), `/contacts.html` manages contacts and
+  `/categories.html` manages categories. Editing,
   locking and deleting a list is the "Edit list" button on that list's own
   page; "Import items" is next to it.
+- Categories (name, color, dark/light text, a drag order) are modeled on
+  trip-planning's and time-management's, except a list has at most one. Set a
+  list's from the dropdown inside its expanded card on the index (saves when
+  you pick) or in "Edit list".
+- The lists index has two views, chosen with the "Sort" dropdown (remembered
+  per device in localStorage, not saved with any list):
+  - **By category** (the default once at least one category exists): lists are
+    grouped under a heading for each category, in the Categories page's order,
+    with "No category" last; empty categories get no heading. The cards don't
+    repeat the category, since the heading says it. Drag a list by its grip
+    handle to reorder it *within* its category - the other categories' lists
+    don't move, and a list can't be dragged under a different heading (use the
+    category dropdown for that; the card stays open as it moves).
+  - **Manual (flat)**: one list in your manual order, each card showing its
+    category as a colored pill. Dragging here saves the order of every list, so
+    it's only offered when the filter isn't narrowing what's shown.
+
+  The category filter works in both views.
 - A list can be locked: a locked list shows a "Locked" badge and its Delete
   button is disabled until you uncheck "Locked" and Save. Deleting an
   unlocked list that has items asks you to confirm and says how many items
@@ -211,21 +244,33 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
   summary (name, recipient, source domain, date) that expands in place into
   the full edit form, rather than a separate view/edit mode or a modal. The
   edit form's "List" dropdown moves the item to another list.
-- Editing an item has two modes, chosen per device. With a mouse
-  (`Global.supportsInlineEdit()`, from shared-assets) each field in the
-  expanded card reads as text: click it (or Tab to it and press Enter) to
-  edit, and clicking away / Tab / Enter saves just that field, Esc cancels,
-  a dropdown saves when you pick, and the summary row updates in place. On
-  touch devices - where tap-to-edit competes with scrolling and a
-  keyboard-dismiss would trigger a save - you get the classic form with one
-  Save button instead. Both are driven by the same field definitions in
+- Editing has two modes, chosen per device. With a mouse
+  (`Global.supportsInlineEdit()`, from shared-assets) it's click-to-edit:
+  - **Headers:** an item's (or, on the index, a list's) name in the
+    accordion header is editable in place - click it, or Tab to it and press
+    Enter - without expanding the card. Only the right-hand strip (badges and
+    chevron) expands/collapses the card on a mouse device, and the gap between
+    the title and that strip does nothing, so a click near the title can't
+    expand instead of edit.
+  - **Expanded fields:** each field in the expanded card also reads as text
+    and edits the same way.
+  - **Saving:** clicking away / Tab / Enter saves just that field, Esc
+    cancels, a dropdown saves when you pick, and the summary row updates in
+    place.
+
+  On touch devices - where tap-to-edit competes with scrolling and a
+  keyboard-dismiss would trigger a save - the whole header row is the
+  expand/collapse button and the expanded card is the classic form with one
+  Save button. Both are driven by the same field definitions in
   `itemFieldDefs()` in `static/list.js`.
 - "Add Item" is a toggle button that reveals an inline add form (again
   mirroring the jobs admin page's "+ Add New Job Opportunity"), not a modal.
 - Ordering: each list is in manual order by default - drag an item by the
   grip handle at the left of its row (touch and mouse; done items stay at the
-  bottom and can't be dragged). The "Sort" dropdown above the items switches
-  the list to priority order, which is saved per list; the manual order is
+  bottom and can't be dragged). The same drag works on the lists index inside an
+  expanded list; it re-reads the list's sort mode each time it opens, so a
+  stale page can't overwrite the manual order. The "Sort" dropdown above the
+  items switches the list to priority order, which is saved per list; the manual order is
   kept underneath and is what breaks ties, and dragging is off in that mode.
   New and imported items are added to the end of the list.
 - Priority is a fixed 1-5 scale (an item may have none) so ordering means the

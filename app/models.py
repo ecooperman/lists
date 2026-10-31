@@ -33,6 +33,25 @@ class Contact(Base):
     items = relationship("Item", back_populates="recipient")
 
 
+class Category(Base):
+    """A user-managed label (name + color) a list can optionally belong to -
+    same shape as the categories in time-management and trip-planning, but
+    one per list rather than several. `text_color` ("dark"/"light") is which
+    text reads legibly on `color`, picked by the user rather than computed."""
+
+    __tablename__ = "categories"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True, nullable=False)
+    color = Column(String, nullable=False)
+    text_color = Column(String, nullable=False, default="dark", server_default="dark")
+    # User-controlled order (drag on the Categories page); new rows go to the
+    # end at max+10, leaving gaps (same pattern as trip-planning).
+    sort_order = Column(Integer, nullable=False, default=0, server_default="0")
+
+    lists = relationship("ItemList", back_populates="category")
+
+
 class ItemList(Base):
     """A named list with a purpose ("Gifts", "Movies to watch", ...). Every
     list has the same item structure - see Item - so a list is just a name
@@ -43,6 +62,10 @@ class ItemList(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     purpose = Column(String, nullable=True)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    # Manual position on the lists index, lower first (see crud.reorder_lists).
+    # New lists go to the end.
+    sort_order = Column(Integer, nullable=False, default=0)
     # A locked list can't be deleted until it's unlocked (see crud.delete_list).
     locked = Column(Boolean, nullable=False, default=False)
     # How the list's items are ordered: "manual" (the drag order, sort_order)
@@ -54,6 +77,7 @@ class ItemList(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     items = relationship("Item", back_populates="list")
+    category = relationship("Category", back_populates="lists")
 
     @property
     def priority_labels(self):

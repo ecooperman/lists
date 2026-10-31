@@ -21,6 +21,7 @@
   <header class="app-header">
     <h1 id="list-title">&nbsp;</h1>
     <p id="list-purpose" class="subtitle"></p>
+    <span id="list-category-slot" class="list-category-slot"></span>
     <span id="list-locked" class="item-badge item-badge-muted hidden">Locked</span>
   </header>
 
@@ -42,6 +43,11 @@
       <div class="field">
         <label for="edit-list-purpose">Purpose</label>
         <textarea id="edit-list-purpose" name="purpose" rows="2" placeholder="What is this list for?"></textarea>
+      </div>
+      <div class="field">
+        <label for="edit-list-category">Category</label>
+        <select id="edit-list-category" name="category_id"></select>
+        <span class="field-hint">Create and order categories on the Categories page.</span>
       </div>
       <div class="field">
         <label>Priority labels</label>
@@ -130,6 +136,7 @@
   <script src="{{ shared_assets_base }}/theme.js"></script>
   <script src="{{ shared_assets_base }}/icons.js"></script>
   <script src="nav.js"></script>
+  <script src="common.js"></script>
   <script src="list.js"></script>
 </body>
 </html>

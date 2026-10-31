@@ -9,6 +9,8 @@ const CONTACTS_API = "/api/contacts";
 
 let sortable = null;
 let currentList = null;
+let categories = [];
+let categoriesById = {};
 let allLists = [];
 let contacts = [];
 let contactsById = {};
@@ -59,6 +61,8 @@ function renderListHeader() {
   document.getElementById("list-title").textContent = currentList.name;
   document.getElementById("list-purpose").textContent = currentList.purpose || "";
   document.getElementById("list-locked").classList.toggle("hidden", !currentList.locked);
+  const category = currentList.category_id ? categoriesById[currentList.category_id] : null;
+  document.getElementById("list-category-slot").replaceChildren(...(category ? [categoryPill(category)] : []));
   document.getElementById("sort-mode").value = currentList.sort_mode;
   const newPriority = document.getElementById("new-priority");
   populatePrioritySelect(newPriority, Number(newPriority.value) || null);
@@ -66,7 +70,12 @@ function renderListHeader() {
 }
 
 async function loadList() {
-  [currentList, allLists] = await Promise.all([Global.fetchJSON(LIST_API), Global.fetchJSON("/api/lists")]);
+  [currentList, allLists, categories] = await Promise.all([
+    Global.fetchJSON(LIST_API),
+    Global.fetchJSON("/api/lists"),
+    Global.fetchJSON("/api/categories"),
+  ]);
+  categoriesById = Object.fromEntries(categories.map((c) => [c.id, c]));
   renderListHeader();
 }
 
@@ -121,6 +130,11 @@ function initEditListForm() {
     form.purpose.value = currentList.purpose || "";
     fillLabelInputs();
     form.locked.checked = currentList.locked;
+    form.category_id.replaceChildren(
+      Global.el("option", { value: "", text: "No category" }),
+      ...categories.map((c) => Global.el("option", { value: String(c.id), text: c.name }))
+    );
+    form.category_id.value = currentList.category_id ? String(currentList.category_id) : "";
     syncDeleteButton();
     form.classList.remove("hidden");
     showBtn.classList.add("hidden");
@@ -141,6 +155,7 @@ function initEditListForm() {
           name,
           purpose: form.purpose.value.trim() || null,
           locked: form.locked.checked,
+          category_id: form.category_id.value ? Number(form.category_id.value) : null,
           priority_labels: [...labelInputs.querySelectorAll("input")].map((input) => input.value.trim()),
         }),
       });
@@ -344,12 +359,50 @@ function readFormInput(def, input) {
   return def.type === "select" || def.type === "date" ? input.value : input.value.trim();
 }
 
+// True where click-to-edit is used: a mouse-style device with the shared
+// helper loaded (see buildItemDetails for why not on touch).
+function canInlineEdit() {
+  return typeof Global.inlineEdit === "function" && Global.supportsInlineEdit();
+}
+
+// The item's name as a click-to-edit title in the accordion header, so it
+// can be renamed without expanding the card.
+function summaryTitleField(card, item) {
+  return Global.inlineEdit({
+    type: "text",
+    value: item.name,
+    required: true,
+    requiredMessage: "Name is required.",
+    className: "item-summary-title summary-title-edit",
+    async onSave(raw) {
+      const updated = await Global.fetchJSON(`${ITEMS_API}/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: raw }),
+      });
+      Object.assign(item, updated);
+      // Keep the expanded form's own Name field (first inline field) in step.
+      const formName = card.querySelector(".item-details .item-fields .inline-edit");
+      if (formName && formName.setValue) formName.setValue(item.name);
+      return updated.name;
+    },
+  });
+}
+
 // The summary row's contents. Rebuilt in place (refreshSummary) whenever an
 // item's fields change - inline editing saves one field at a time, and
 // re-rendering the whole card each time would steal focus from the field
 // you just tabbed into.
-function renderSummary(card, summary, item) {
+//
+// Two layouts, by device (see summary's "inline-header" class):
+//  - mouse: the title is click-to-edit, and ONLY the right-hand cluster
+//    (badges + chevron, stretched to the card's edge) expands/collapses the
+//    card. The gap between them does nothing, so a stray click near the title
+//    can't expand the card instead of editing it.
+//  - touch: the whole row is the expand/collapse button, as before.
+function renderSummary(card, summary, item, details) {
   summary.replaceChildren();
+  const inlineHeader = summary.classList.contains("inline-header");
 
   const doneCheckbox = Global.el("input", { type: "checkbox", class: "item-summary-done-toggle", "aria-label": "Mark done" });
   doneCheckbox.checked = !!item.done;
@@ -379,11 +432,28 @@ function renderSummary(card, summary, item) {
   }
   summary.appendChild(doneCheckbox);
 
-  summary.appendChild(Global.el("span", { class: "item-summary-title", text: item.name }));
+  // Everything right of the title goes in `right`: the toggle zone on mouse
+  // devices, the row itself on touch.
+  let right = summary;
+  if (inlineHeader) {
+    summary.appendChild(summaryTitleField(card, item));
+    summary.appendChild(Global.el("span", { class: "summary-spacer" }));
+    right = Global.el("div", {
+      class: "item-summary-zone",
+      role: "button",
+      tabindex: "0",
+      "aria-label": "Expand or collapse",
+      "aria-expanded": String(card.classList.contains("expanded")),
+    });
+    summary.appendChild(right);
+    Global.wireAccordionToggle(card, right, details);
+  } else {
+    summary.appendChild(Global.el("span", { class: "item-summary-title", text: item.name }));
+  }
 
   const recipient = item.recipient ? contactName(item.recipient) : null;
   if (recipient) {
-    summary.appendChild(Global.el("span", { class: "item-badge item-badge-accent", text: recipient }));
+    right.appendChild(Global.el("span", { class: "item-badge item-badge-accent", text: recipient }));
   }
 
   const domain = item.url ? Global.domainFromUrl(item.url) : null;
@@ -397,28 +467,29 @@ function renderSummary(card, summary, item) {
     });
     // Opening the source link shouldn't also toggle the accordion.
     domainLink.addEventListener("click", (e) => e.stopPropagation());
-    summary.appendChild(domainLink);
+    domainLink.addEventListener("keydown", (e) => e.stopPropagation());
+    right.appendChild(domainLink);
   }
 
   if (item.priority && !item.done) {
-    summary.appendChild(
+    right.appendChild(
       Global.el("span", { class: `item-badge item-badge-priority priority-${item.priority}`, text: priorityLabel(item.priority) })
     );
   }
 
-  summary.appendChild(Global.el("span", { class: "item-badge item-badge-muted item-badge-progress hidden" }));
+  right.appendChild(Global.el("span", { class: "item-badge item-badge-muted item-badge-progress hidden" }));
 
   const dateLabel = Global.formatDateBadge(item.needed_by);
   if (dateLabel) {
-    summary.appendChild(Global.el("span", { class: "item-badge item-badge-date", text: dateLabel }));
+    right.appendChild(Global.el("span", { class: "item-badge item-badge-date", text: dateLabel }));
   }
 
-  summary.appendChild(Global.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
+  right.appendChild(Global.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
 }
 
 function refreshSummary(card, item) {
   card.classList.toggle("done", !!item.done);
-  renderSummary(card, card.querySelector(".item-summary"), item);
+  renderSummary(card, card.querySelector(".item-summary"), item, card.querySelector(".item-details"));
   applyProgress(card, item, item.progress);
 }
 
@@ -434,12 +505,16 @@ function itemCardElement(item, { expanded = false } = {}) {
     "data-id": item.id,
   });
 
-  const summary = Global.el("button", { type: "button", class: "item-summary", "aria-expanded": String(expanded) });
-  renderSummary(card, summary, item);
-
   const details = Global.el("div", { class: "item-details" + (expanded ? "" : " hidden") });
 
-  Global.wireAccordionToggle(card, summary, details);
+  // On mouse devices the header isn't itself a button (it holds an editable
+  // title); renderSummary makes the right-hand zone the toggle instead.
+  const inlineHeader = canInlineEdit();
+  const summary = inlineHeader
+    ? Global.el("div", { class: "item-summary inline-header" })
+    : Global.el("button", { type: "button", class: "item-summary", "aria-expanded": String(expanded) });
+  renderSummary(card, summary, item, details);
+  if (!inlineHeader) Global.wireAccordionToggle(card, summary, details);
 
   card.append(summary, details);
   applyProgress(card, item, item.progress);
@@ -457,7 +532,7 @@ function itemCardElement(item, { expanded = false } = {}) {
 function buildItemDetails(card, item) {
   const wrap = Global.el("div", { class: "item-details-inner" });
   const defs = itemFieldDefs();
-  const inline = typeof Global.inlineEdit === "function" && Global.supportsInlineEdit();
+  const inline = canInlineEdit();
 
   const patchItem = (body) =>
     Global.fetchJSON(`${ITEMS_API}/${item.id}`, {

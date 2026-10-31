@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manage Categories - Lists</title>
+  <link rel="stylesheet" href="{{ shared_assets_base }}/theme.css" />
+  <link rel="stylesheet" href="/style.css" />
+  <!-- Drag-to-reorder; same pinned CDN build the list pages use. -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <h1>Manage Categories</h1>
+    <p class="subtitle">Label your lists. Drag to set the order used when sorting lists by category.</p>
+  </header>
+
+  <main>
+    <div id="app-nav-mount"></div>
+
+    <div id="page-message" class="page-message hidden"></div>
+
+    <div id="category-rows" class="category-rows"></div>
+
+    <form id="add-category-form" class="category-row new-category-row">
+      <input type="text" id="new-category-name" placeholder="Category name" maxlength="40" required />
+      <input type="color" id="new-category-color" value="#3a7d6b" aria-label="Color" />
+      <select id="new-category-text-color" aria-label="Text color">
+        <option value="dark">Dark text</option>
+        <option value="light">Light text</option>
+      </select>
+      <span id="new-category-preview" class="category-pill">Preview</span>
+      <button type="submit" class="save-btn">Add category</button>
+    </form>
+  </main>
+
+  <script src="{{ shared_assets_base }}/theme.js"></script>
+  <script src="{{ shared_assets_base }}/icons.js"></script>
+  <script src="/nav.js"></script>
+  <script src="/common.js"></script>
+  <script src="/categories.js"></script>
+</body>
+</html>

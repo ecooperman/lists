@@ -46,15 +46,27 @@
       <div class="list-header">
         <h2>All lists</h2>
         <span id="list-count" class="list-count"></span>
+        <div class="list-controls">
+          <div id="category-filter-mount"></div>
+          <label class="sort-control">Sort
+            <select id="lists-sort" aria-label="Sort lists">
+              <option value="category">By category</option>
+              <option value="manual">Manual (flat)</option>
+            </select>
+          </label>
+        </div>
       </div>
       <div id="lists-list" class="item-list"></div>
       <p id="empty-state" class="empty-state" hidden>No lists yet - add one above to get started.</p>
     </section>
   </main>
 
+  <!-- Drag-to-reorder inside an expanded list; same pinned CDN build as the list page. -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script src="{{ shared_assets_base }}/theme.js"></script>
   <script src="{{ shared_assets_base }}/icons.js"></script>
   <script src="nav.js"></script>
+  <script src="common.js"></script>
   <script src="lists.js"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .config import SHARED_ASSETS_BASE
-from .routers import contacts, items, lists
+from .routers import categories, contacts, items, lists
 
 # Schema is owned by Alembic migrations (see migrations/) - run
 # `alembic upgrade head` before starting the app rather than relying on
@@ -25,6 +25,11 @@ def index(request: Request):
 @app.get("/list.html", response_class=HTMLResponse)
 def list_page(request: Request):
     return templates.TemplateResponse(request, "list.html", {"shared_assets_base": SHARED_ASSETS_BASE})
+
+
+@app.get("/categories.html", response_class=HTMLResponse)
+def categories_page(request: Request):
+    return templates.TemplateResponse(request, "categories.html", {"shared_assets_base": SHARED_ASSETS_BASE})
 
 
 @app.get("/contacts.html", response_class=HTMLResponse)
@@ -51,6 +56,7 @@ async def no_cache(request: Request, call_next):
 app.include_router(lists.router)
 app.include_router(items.router)
 app.include_router(contacts.router)
+app.include_router(categories.router)
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
