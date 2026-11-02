@@ -12,3 +12,6 @@ Global.buildNav([
   { href: "/categories.html", icon: "tag", label: "Categories", active: location.pathname === "/categories.html" },
   { icon: "refresh", label: "Refresh", onclick: () => location.reload() },
 ]);
+
+// Who's signed in, with a Log out link, in the page header (shared-assets).
+Global.mountUserBadge();
