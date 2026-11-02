@@ -56,10 +56,11 @@ time it sees them. `GET /api/me` says who you are.
   becomes theirs. Set `ADMIN_EMAILS` (comma-separated, in
   `/etc/personal-apps/shared.env`) to restrict that to specific emails - do it
   before inviting anyone else.
-- **Production sign-in check:** set `CF_TEAM_DOMAIN` and `CF_ACCESS_AUD` (see
-  `DEPLOYMENT.md`) and the app verifies Cloudflare's signed token. Without them
-  it trusts the plain email header, which is only safe because the app listens
-  on `127.0.0.1`.
+- **Production sign-in check:** `CF_TEAM_DOMAIN` and `CF_ACCESS_AUD` (see
+  `DEPLOYMENT.md`) are required - the app verifies Cloudflare's signed token
+  and answers 503 to everything if they're missing. It never trusts the plain
+  email header: only Access sets it, and a hostname that bypasses Access lets a
+  visitor send any value they like.
 - **Local development:** there's no Cloudflare, so every request is
   `DEV_USER_EMAIL` (default `dev@localhost.test`). To be someone else, send a
   `Cf-Access-Authenticated-User-Email` header or run

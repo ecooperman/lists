@@ -55,6 +55,13 @@ def test_a_bad_token_is_rejected(client, production, keypair, build):
     assert client.get("/api/me", headers={"Cf-Access-Jwt-Assertion": build(keypair[0])}).status_code == 401
 
 
+def test_any_of_several_configured_audiences_is_accepted(client, production, keypair, monkeypatch):
+    monkeypatch.setattr(config, "CF_ACCESS_AUD", f"some-other-app, {AUD}")
+    resp = client.get("/api/me", headers={"Cf-Access-Jwt-Assertion": token(keypair[0])})
+    assert resp.status_code == 200
+    assert client.get("/api/me", headers={"Cf-Access-Jwt-Assertion": token(keypair[0], aud="neither")}).status_code == 401
+
+
 def test_a_forged_plain_header_is_ignored_when_tokens_are_verified(client, production):
     resp = client.get("/api/me", headers={"Cf-Access-Authenticated-User-Email": "alice@example.com"})
     assert resp.status_code == 401
@@ -64,8 +71,23 @@ def test_no_identity_at_all_is_a_401_in_production(client, production):
     assert client.get("/api/lists").status_code == 401
 
 
-def test_without_token_config_production_falls_back_to_the_plain_header(client, monkeypatch):
+def test_without_token_config_production_refuses_everything_even_with_the_header(client, monkeypatch):
+    # A hostname that bypasses Access lets anyone send this header themselves.
     monkeypatch.setattr(config, "ENV", "production")
     monkeypatch.setattr(config, "CF_ACCESS_AUD", None)
-    assert client.get("/api/me").status_code == 401
-    assert client.get("/api/me", headers={"Cf-Access-Authenticated-User-Email": "a@example.com"}).json()["email"] == "a@example.com"
+    assert client.get("/api/me").status_code == 503
+    assert client.get("/api/me", headers={"Cf-Access-Authenticated-User-Email": "alice@example.com"}).status_code == 503
+
+
+@pytest.mark.parametrize("pasted", ["team.cloudflareaccess.com", "https://team.cloudflareaccess.com/", " team.cloudflareaccess.com "])
+def test_the_team_domain_may_be_pasted_with_a_scheme_or_slash(monkeypatch, pasted):
+    seen = []
+    monkeypatch.setattr(auth, "_jwks_client", None)
+    monkeypatch.setattr(config, "CF_TEAM_DOMAIN", pasted)
+    monkeypatch.setattr(auth.jwt, "PyJWKClient", lambda url, **kw: seen.append(url) or object())
+    try:
+        auth._signing_key("token")
+    except AttributeError:
+        pass  # the stand-in client has no get_signing_key_from_jwt; only the URL matters
+    assert seen == ["https://team.cloudflareaccess.com/cdn-cgi/access/certs"]
+    monkeypatch.setattr(auth, "_jwks_client", None)

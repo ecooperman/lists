@@ -15,9 +15,11 @@ SHARED_ASSETS_BASE = "https://static.evancooperman.com" if ENV == "production" e
 # --- who is signed in (see app/auth.py) -------------------------------------
 # There is no login form: Cloudflare Access authenticates everyone before a
 # request reaches the app and tells us who it was. In production the app
-# verifies the signed token Access attaches (needs both values below, from
+# verifies the signed token Access attaches (REQUIRED in production - the app
+# refuses every request without both values; needs both values below, from
 # Zero Trust -> Access -> Applications; the AUD tag is on the application's
-# overview page). They live in the shared secrets file every app reads
+# overview page; several, comma-separated, if more than one Access application
+# can front this app - each application has its own tag). They live in the shared secrets file every app reads
 # (/etc/personal-apps/shared.env, see DEPLOYMENT.md).
 CF_TEAM_DOMAIN = os.environ.get("CF_TEAM_DOMAIN")  # e.g. "yourteam.cloudflareaccess.com"
 CF_ACCESS_AUD = os.environ.get("CF_ACCESS_AUD")
