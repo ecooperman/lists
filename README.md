@@ -26,6 +26,50 @@ The SQLite database (`gifts.db`) is not created by the app itself - `alembic
 upgrade head` creates it. This only needs to be run once for a fresh
 install; see below for how schema changes are handled from here on.
 
+## Accounts and sharing
+
+There is no sign-in form. Cloudflare Access already authenticates everyone
+before a request reaches the app and tells it who it was, so the app just
+reads that email (`app/auth.py`) and creates the person's account the first
+time it sees them. `GET /api/me` says who you are.
+
+- **Roles on a list:** `owner` (whoever created it - exactly one), `edit`
+  (works with the items: add, edit, check off, delete, reorder, import, move,
+  switch sort mode) and `view` (read only). Only the owner can rename, change
+  the purpose or priority labels, lock, delete or share a list. Anyone can
+  leave a list shared with them. A list you aren't on is a 404, the same as one
+  that doesn't exist.
+- **Sharing:** the owner shares by email from "Edit list" -> "Shared with"
+  (`GET/POST /api/lists/{id}/members`, `PATCH/DELETE .../members/{user_id}`).
+  The person needn't have signed in yet; the list is waiting when they do. They
+  must also be allowed through Cloudflare Access, or they never get this far.
+- **Each person arranges lists themselves:** a list's position on your index and
+  the category you filed it under belong to *you* (`list_members`), so sharing
+  never rearranges anyone else's page. Categories are private to their creator,
+  and names are unique per person.
+- **Contacts:** your address book is yours alone. A shared list offers its
+  *owner's* contacts as "who is it for" - to everyone, as names only (no email
+  or address, `GET /api/lists/{id}/contacts`). Moving an item to a list with a
+  different owner clears its recipient.
+- **Existing data:** the migration parks everything that existed before accounts
+  on a placeholder user, and the first person to sign in takes it over, so it all
+  becomes theirs. Set `ADMIN_EMAILS` (comma-separated, in
+  `/etc/personal-apps/shared.env`) to restrict that to specific emails - do it
+  before inviting anyone else.
+- **Production sign-in check:** set `CF_TEAM_DOMAIN` and `CF_ACCESS_AUD` (see
+  `DEPLOYMENT.md`) and the app verifies Cloudflare's signed token. Without them
+  it trusts the plain email header, which is only safe because the app listens
+  on `127.0.0.1`.
+- **Local development:** there's no Cloudflare, so every request is
+  `DEV_USER_EMAIL` (default `dev@localhost.test`). To be someone else, send a
+  `Cf-Access-Authenticated-User-Email` header or run
+  `document.cookie = "dev_user=bob@example.com; path=/"` in the browser console
+  (delete the cookie to go back). Neither works in production.
+
+Tests (`pytest`, after `pip install -r requirements-dev.txt`) run the real
+migrations on a throwaway database and check every endpoint against the access
+rules, plus the token checks.
+
 ## API-first design
 
 The backend (`app/`) is a plain JSON REST API (`/api/gifts`, `/api/contacts`,
@@ -35,12 +79,14 @@ talking to the API over `fetch`. That separation means the backend can be
 tested and used entirely on its own, and the frontend can later be swapped
 for something richer without touching the API.
 
-List endpoints:
+List endpoints (all need you to be signed in; see "Accounts and sharing" for
+who may do what):
 
-- `GET /api/lists` - all lists in their manual order, each with `item_count`
-  and `open_count`
-- `PUT /api/lists/order` - body `{"list_ids": [...]}`; saves that order for the
-  lists index (400 if an id repeats or doesn't exist)
+- `GET /api/lists` - the lists you're on, in *your* manual order, each with
+  `item_count`, `open_count`, your `my_role`, the `owner_email` and how many
+  people share it (`member_count`)
+- `PUT /api/lists/order` - body `{"list_ids": [...]}`; saves that order for
+  *your* lists index (400 if an id repeats or isn't a list you're on)
 - `POST /api/lists` - create a list (`name` required, `purpose` optional)
 - `GET /api/lists/{id}` - fetch one list
 - `PATCH /api/lists/{id}` - update `name` / `purpose` / `locked` / `category_id`
@@ -50,7 +96,14 @@ List endpoints:
   resets all five). Every list response carries `priority_labels` fully
   resolved, so clients never need the defaults (Low, Medium, High, Critical,
   Blocker) themselves
-- `DELETE /api/lists/{id}` - delete a list. 409s if the list is `locked`
+- `GET /api/lists/{id}/contacts` - who its items can be for (the owner's
+  contacts, names only)
+- `GET /api/lists/{id}/members` (owner) - everyone on the list
+- `POST /api/lists/{id}/members` (owner) - body `{"email": "...", "role": "edit" | "view"}`
+- `PATCH /api/lists/{id}/members/{user_id}` (owner) - change a role
+- `DELETE /api/lists/{id}/members/{user_id}` - the owner removes anyone; anyone
+  else can remove only themselves
+- `DELETE /api/lists/{id}` - (owner) delete a list, for everyone it's shared with. 409s if the list is `locked`
   (unlock it first - `force` doesn't override this), or while it still has
   items (same guard as contacts) unless you pass `?force=true`, which deletes
   the items along with the list and returns `deleted_items`

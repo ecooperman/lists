@@ -9,6 +9,8 @@
 //   ctx.contacts  every contact, for the "who is it for" field
 //   ctx.reload()  re-fetch and re-render that list's items (called when an
 //                 edit changes which items there are or in what order)
+//   ctx.canEdit   false for someone with view-only access: the card then shows
+//                 the item as plain text, with nothing to edit, check or drag
 // They're read when a card is built, so a page can swap in new values by
 // reassigning what the getters return.
 
@@ -123,8 +125,10 @@ const ItemCard = (function () {
     summary.replaceChildren();
     const inlineHeader = summary.classList.contains("inline-header");
 
+    const editable = ctx.canEdit !== false;
     const doneCheckbox = Global.el("input", { type: "checkbox", class: "item-summary-done-toggle", "aria-label": "Mark done" });
     doneCheckbox.checked = !!item.done;
+    doneCheckbox.disabled = !editable;
     doneCheckbox.addEventListener("click", (e) => e.stopPropagation());
     doneCheckbox.addEventListener("change", async () => {
       try {
@@ -138,7 +142,7 @@ const ItemCard = (function () {
         Global.showMessage(err.message, "error");
       }
     });
-    if (!item.done) {
+    if (!item.done && editable) {
       // Grabbing the row anywhere would fight tap-to-expand, so dragging is
       // handle-only (see list.js initSortable / lists.js initPreviewSortable).
       const handle = Global.el("span", { class: "item-drag-handle", "aria-label": "Drag to reorder", text: "⋮⋮" });
@@ -224,7 +228,8 @@ const ItemCard = (function () {
 
     // On mouse devices the header isn't itself a button (it holds an editable
     // title); renderSummary makes the right-hand zone the toggle instead.
-    const inlineHeader = canInlineEdit();
+    const editable = ctx.canEdit !== false;
+    const inlineHeader = editable && canInlineEdit();
     const summary = inlineHeader
       ? Global.el("div", { class: "item-summary inline-header" })
       : Global.el("button", { type: "button", class: "item-summary", "aria-expanded": String(expanded) });
@@ -233,8 +238,34 @@ const ItemCard = (function () {
 
     card.append(summary, details);
     applyProgress(card, item, item.progress);
-    details.appendChild(buildItemDetails(card, item, ctx));
+    details.appendChild(editable ? buildItemDetails(card, item, ctx) : buildReadonlyDetails(item, ctx));
     return card;
+  }
+
+  // What someone with view-only access sees when they expand an item: the
+  // fields that have something in them, as plain text.
+  function buildReadonlyDetails(item, ctx) {
+    const wrap = Global.el("div", { class: "item-details-inner" });
+    const fields = Global.el("div", { class: "item-fields" });
+    const add = (label, value) => {
+      if (value === null || value === undefined || value === "") return;
+      fields.appendChild(Global.el("div", { class: "field" }, [Global.el("label", { text: label }), value]));
+    };
+    const text = (value) => Global.el("div", { class: "readonly-value", text: value });
+
+    add("Who is it for?", item.recipient ? text(contactName(item.recipient)) : null);
+    add("Priority", item.priority ? text(ctx.list.priority_labels[item.priority - 1]) : null);
+    add("Description", item.description ? text(item.description) : null);
+    add(
+      "URL",
+      item.url ? Global.el("a", { class: "readonly-value", href: item.url, target: "_blank", rel: "noopener noreferrer", text: item.url }) : null
+    );
+    add("Needed by", item.needed_by ? text(formatLongDate(Global.toISODate(item.needed_by))) : null);
+    add("Progress", item.progress ? text(`${item.progress}%`) : null);
+    if (!fields.children.length) fields.appendChild(Global.el("p", { class: "preview-empty", text: "No more details." }));
+    wrap.appendChild(fields);
+    if (item.scrape_status === "success") wrap.appendChild(Global.el("div", { class: "scrape-section" }, [renderScrapeStatus(item)]));
+    return wrap;
   }
 
   // The expanded card has two ways to edit, chosen per device:

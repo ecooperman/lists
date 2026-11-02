@@ -30,6 +30,24 @@ class Contact(ContactBase):
     id: int
 
 
+class ContactRef(BaseModel):
+    """What other people on a shared list see of a recipient: just the name,
+    never the address-book details (email, address)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    first_name: str
+    last_name: Optional[str] = None
+
+
+class Me(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: str
+
+
 class CategoryBase(BaseModel):
     name: str = Field(min_length=1, max_length=40)
     color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
@@ -91,16 +109,36 @@ class ItemList(ItemListBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    sort_order: int
     locked: bool
-    category_id: Optional[int] = None
     sort_mode: SortMode
     priority_labels: List[str]
     created_at: datetime
-    # Not columns - crud.attach_counts() sets these on each row so the lists
+    # Not columns - crud.list_views() sets these on each row for the person
+    # asking: where *they* have the list (position, category), what they can
+    # do with it, and who it's shared with, plus the counts so the lists
     # index can show "N left" without a request per list.
+    sort_order: int
+    category_id: Optional[int] = None
+    my_role: Literal["owner", "edit", "view"]
+    owner_email: str
+    member_count: int = 1
     item_count: int = 0
     open_count: int = 0
+
+
+class Member(BaseModel):
+    user_id: int
+    email: str
+    role: Literal["owner", "edit", "view"]
+
+
+class MemberAdd(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    role: Literal["edit", "view"]
+
+
+class MemberUpdate(BaseModel):
+    role: Literal["edit", "view"]
 
 
 class ItemBase(BaseModel):
@@ -152,7 +190,7 @@ class Item(ItemBase):
     done: bool
     done_at: Optional[datetime] = None
     progress: int
-    recipient: Optional[Contact] = None
+    recipient: Optional[ContactRef] = None
     scrape_status: ScrapeStatus
     scraped_title: Optional[str] = None
     scraped_description: Optional[str] = None

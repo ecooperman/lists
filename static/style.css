@@ -521,3 +521,50 @@
     display: none;
   }
 }
+
+/* --- sharing --- */
+
+.member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.member-email {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.member-add {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.member-add input {
+  flex: 1 1 200px;
+  width: auto;
+  min-width: 0;
+}
+
+.member-add select {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.readonly-value {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

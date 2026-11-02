@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .config import SHARED_ASSETS_BASE
-from .routers import categories, contacts, items, lists
+from .routers import categories, contacts, items, lists, me
 
 # Schema is owned by Alembic migrations (see migrations/) - run
 # `alembic upgrade head` before starting the app rather than relying on
@@ -53,6 +53,7 @@ async def no_cache(request: Request, call_next):
     return response
 
 
+app.include_router(me.router)
 app.include_router(lists.router)
 app.include_router(items.router)
 app.include_router(contacts.router)

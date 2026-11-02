@@ -4,7 +4,6 @@
 const params = new URLSearchParams(window.location.search);
 const listId = Number(params.get("id"));
 const LIST_API = `/api/lists/${listId}`;
-const CONTACTS_API = "/api/contacts";
 
 let sortable = null;
 let currentList = null;
@@ -22,13 +21,27 @@ const itemCtx = {
     return currentList;
   },
   get lists() {
-    return allLists;
+    // Moving an item needs edit access to where it's going.
+    return allLists.filter((l) => l.my_role !== "view" || l.id === listId);
   },
   get contacts() {
     return contacts;
   },
+  get canEdit() {
+    return canEdit();
+  },
   reload: () => loadItems(),
 };
+
+// What you can do here follows from your role on this list (currentList.my_role):
+// "owner" can do everything, "edit" works with the items, "view" only reads.
+function canEdit() {
+  return currentList.my_role !== "view";
+}
+
+function isOwner() {
+  return currentList.my_role === "owner";
+}
 
 // --- contacts (for the "who is it for" dropdowns) ---
 
@@ -42,8 +55,9 @@ function populateRecipientSelect(select, selectedId) {
   }
 }
 
+// A list offers its owner's contacts (names only), whoever is looking.
 async function loadContacts() {
-  contacts = await Global.fetchJSON(CONTACTS_API);
+  contacts = await Global.fetchJSON(`${LIST_API}/contacts`);
   contactsById = Object.fromEntries(contacts.map((c) => [c.id, c]));
   populateRecipientSelect(document.getElementById("new-recipient"));
 }
@@ -70,9 +84,28 @@ function renderListHeader() {
   const category = currentList.category_id ? categoriesById[currentList.category_id] : null;
   document.getElementById("list-category-slot").replaceChildren(...(category ? [categoryPill(category)] : []));
   document.getElementById("sort-mode").value = currentList.sort_mode;
+  applyRole();
   const newPriority = document.getElementById("new-priority");
   populatePrioritySelect(newPriority, Number(newPriority.value) || null);
   document.title = `${currentList.name} - Lists`;
+}
+
+const ROLE_TEXT = { edit: "You can edit this list", view: "You can only view this list" };
+
+// Show only what this person's role allows. (The server enforces it too;
+// this just keeps the page from offering things that would be refused.)
+function applyRole() {
+  const owner = isOwner();
+  const access = document.getElementById("list-access");
+  access.textContent = owner ? "" : `Shared by ${currentList.owner_email} - ${ROLE_TEXT[currentList.my_role]}`;
+  access.classList.toggle("hidden", owner);
+  document.getElementById("show-edit-list").classList.toggle("hidden", !owner);
+  document.getElementById("leave-list").classList.toggle("hidden", owner);
+  if (!owner) document.getElementById("edit-list-form").classList.add("hidden");
+  document.getElementById("show-import").classList.toggle("hidden", !canEdit());
+  document.getElementById("show-add-item").classList.toggle("hidden", !canEdit());
+  if (!canEdit()) document.getElementById("new-item-form").classList.add("hidden");
+  document.getElementById("sort-mode").disabled = !canEdit();
 }
 
 async function loadList() {
@@ -204,6 +237,104 @@ function initEditListForm() {
   });
 }
 
+// --- sharing (owner), leaving (everyone else) ---
+
+const ROLE_LABELS = { owner: "Owner", edit: "Can edit", view: "Can view" };
+
+function initSharing() {
+  const memberList = document.getElementById("member-list");
+  const emailInput = document.getElementById("member-email");
+  const roleSelect = document.getElementById("member-role");
+
+  const send = (url, method, body) =>
+    Global.fetchJSON(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+  async function loadMembers() {
+    let members;
+    try {
+      members = await Global.fetchJSON(`${LIST_API}/members`);
+    } catch (err) {
+      Global.showMessage(err.message, "error");
+      return;
+    }
+    memberList.replaceChildren(
+      ...members.map((member) => {
+        const row = Global.el("div", { class: "member-row" }, [Global.el("span", { class: "member-email", text: member.email })]);
+        if (member.role === "owner") {
+          row.appendChild(Global.el("span", { class: "item-badge item-badge-muted", text: ROLE_LABELS.owner }));
+          return row;
+        }
+        const select = Global.el(
+          "select",
+          { "aria-label": `Access for ${member.email}` },
+          ["view", "edit"].map((role) => Global.el("option", { value: role, text: ROLE_LABELS[role] }))
+        );
+        select.value = member.role;
+        select.addEventListener("change", async () => {
+          try {
+            await send(`${LIST_API}/members/${member.user_id}`, "PATCH", { role: select.value });
+          } catch (err) {
+            select.value = member.role;
+            Global.showMessage(err.message, "error");
+            return;
+          }
+          member.role = select.value;
+        });
+        const remove = Global.el("button", { type: "button", class: "cancel-btn", text: "Remove" });
+        remove.addEventListener("click", async () => {
+          if (!confirm(`Stop sharing "${currentList.name}" with ${member.email}?`)) return;
+          try {
+            await send(`${LIST_API}/members/${member.user_id}`, "DELETE");
+            loadMembers();
+          } catch (err) {
+            Global.showMessage(err.message, "error");
+          }
+        });
+        row.append(select, remove);
+        return row;
+      })
+    );
+  }
+
+  document.getElementById("show-edit-list").addEventListener("click", loadMembers);
+
+  document.getElementById("member-add").addEventListener("click", async () => {
+    const email = emailInput.value.trim();
+    if (!email) return;
+    try {
+      await send(`${LIST_API}/members`, "POST", { email, role: roleSelect.value });
+    } catch (err) {
+      Global.showMessage(err.message, "error");
+      return;
+    }
+    emailInput.value = "";
+    Global.showMessage(`Shared with ${email}.`, "success");
+    loadMembers();
+  });
+  // Enter in the box shares rather than saving the whole form.
+  emailInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      document.getElementById("member-add").click();
+    }
+  });
+
+  document.getElementById("leave-list").addEventListener("click", async () => {
+    if (!confirm(`Leave "${currentList.name}"? You'll lose access until ${currentList.owner_email} shares it with you again.`)) return;
+    try {
+      const me = await Global.fetchJSON("/api/me");
+      await send(`${LIST_API}/members/${me.id}`, "DELETE");
+      window.location.href = "/";
+    } catch (err) {
+      Global.showMessage(err.message, "error");
+    }
+  });
+}
+
 // --- import pasted notes as items ---
 
 function initImportForm() {
@@ -302,10 +433,11 @@ function renderItems(items) {
   // Drag handles only make sense in manual mode - in priority mode the
   // server decides the order.
   list.classList.toggle("sort-priority", currentList.sort_mode === "priority");
-  if (sortable) sortable.option("disabled", currentList.sort_mode === "priority");
+  if (sortable) sortable.option("disabled", currentList.sort_mode === "priority" || !canEdit());
   const remaining = items.filter((i) => !i.done).length;
   count.textContent = items.length ? `${remaining} left` : "";
   emptyState.hidden = items.length !== 0;
+  emptyState.textContent = canEdit() ? "No items yet - add one above to get started." : "No items yet.";
   for (const item of items) {
     list.appendChild(ItemCard.create(item, itemCtx));
   }
@@ -417,6 +549,7 @@ async function init() {
     return;
   }
   initEditListForm();
+  initSharing();
   initImportForm();
   initSortMode();
   initSortable();

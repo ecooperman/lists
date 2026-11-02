@@ -21,6 +21,7 @@
   <header class="app-header">
     <h1 id="list-title">&nbsp;</h1>
     <p id="list-purpose" class="subtitle"></p>
+    <p id="list-access" class="subtitle hidden"></p>
     <span id="list-category-slot" class="list-category-slot"></span>
     <span id="list-locked" class="item-badge item-badge-muted hidden">Locked</span>
   </header>
@@ -33,6 +34,7 @@
     <div class="list-tools">
       <button id="show-edit-list" type="button" class="secondary-btn">Edit list</button>
       <button id="show-import" type="button" class="secondary-btn">Import items</button>
+      <button id="leave-list" type="button" class="secondary-btn hidden">Leave list</button>
     </div>
 
     <form id="edit-list-form" class="add-card hidden">
@@ -54,6 +56,19 @@
         <div id="priority-label-inputs" class="priority-label-inputs"></div>
         <span class="field-hint">What this list calls priority levels 1 (lowest) to 5 (highest). Leave one blank to use its default.</span>
         <button type="button" id="reset-priority-labels" class="secondary-btn reset-labels-btn">Reset to defaults</button>
+      </div>
+      <div class="field">
+        <label for="member-email">Shared with</label>
+        <div id="member-list" class="member-list"></div>
+        <div class="member-add">
+          <input id="member-email" type="email" placeholder="Email address" autocomplete="off" />
+          <select id="member-role" aria-label="Access level">
+            <option value="view">Can view</option>
+            <option value="edit">Can edit</option>
+          </select>
+          <button type="button" id="member-add" class="secondary-btn">Share</button>
+        </div>
+        <span class="field-hint">They see this list the next time they sign in with that email. Viewers can read it; editors can also change its items. Only you can rename, share, lock or delete it.</span>
       </div>
       <div class="field checkbox-field">
         <input id="edit-list-locked" name="locked" type="checkbox" />

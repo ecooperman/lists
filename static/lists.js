@@ -29,7 +29,6 @@ let categories = [];
 let categoriesById = {};
 let listsSort = loadPref("lists.sort", "category"); // "category" (grouped under headings) | "manual" (flat)
 let categoryFilter = loadPref("lists.categoryFilter", []); // category ids as strings, "none" = uncategorized
-let contacts = null; // loaded the first time a list is expanded
 // What's on screen per list id, so a change to one list's items can update its
 // header count (and any other open list an item was moved into).
 const listViews = new Map();
@@ -303,6 +302,15 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
     right.appendChild(Global.el("span", { class: "item-badge item-badge-muted", text: "Locked" }));
   }
 
+  // Lists shared with you say so (and what you can do); your own say it only
+  // once you've shared them with someone.
+  if (itemList.my_role !== "owner") {
+    const text = itemList.my_role === "view" ? "View only" : "Shared";
+    right.appendChild(Global.el("span", { class: "item-badge item-badge-muted", title: `Shared by ${itemList.owner_email}`, text }));
+  } else if (itemList.member_count > 1) {
+    right.appendChild(Global.el("span", { class: "item-badge item-badge-muted", title: "Shared with others", text: "Shared" }));
+  }
+
   const countBadge = Global.el("span", { class: "item-badge item-badge-accent" });
   setCountBadge(countBadge, itemList);
   right.appendChild(countBadge);
@@ -372,14 +380,19 @@ async function refreshCounts(editedId) {
 // the way into the list page. In manual order they can be dragged into a new
 // order right here (same rules as the list page).
 async function loadPreview(itemList, preview) {
-  let list, items;
+  let list, items, contacts;
   try {
     // Re-read the list itself along with its items: this page may be a stale
     // copy (browser Back), and dragging saves the *manual* order - so it must
     // never be offered for a list that has since been switched to priority.
-    [list, items] = await Global.withLoading(
+    [list, items, contacts] = await Global.withLoading(
       preview,
-      Promise.all([Global.fetchJSON(`/api/lists/${itemList.id}`), Global.fetchJSON(`/api/lists/${itemList.id}/items`), ensureContacts()])
+      Promise.all([
+        Global.fetchJSON(`/api/lists/${itemList.id}`),
+        Global.fetchJSON(`/api/lists/${itemList.id}/items`),
+        // Who an item can be for: this list's owner's contacts (names only).
+        Global.fetchJSON(`/api/lists/${itemList.id}/contacts`).catch(() => []),
+      ])
     );
   } catch (err) {
     Global.showMessage(err.message, "error");
@@ -395,9 +408,11 @@ async function loadPreview(itemList, preview) {
     const ctx = {
       list,
       get lists() {
-        return lists;
+        // Moving an item needs edit access to where it's going.
+        return lists.filter((l) => l.my_role !== "view" || l.id === list.id);
       },
       contacts,
+      canEdit: list.my_role !== "view",
       reload() {
         loadPreview(itemList, preview);
         refreshCounts(itemList.id);
@@ -411,7 +426,7 @@ async function loadPreview(itemList, preview) {
       items.map((item) => ItemCard.create(item, ctx))
     );
     preview.appendChild(stack);
-    if (manual) initPreviewSortable(itemList, preview, stack);
+    if (manual && ctx.canEdit) initPreviewSortable(itemList, preview, stack);
   }
 
   preview.appendChild(
@@ -419,19 +434,6 @@ async function loadPreview(itemList, preview) {
       Global.el("a", { href: `list.html?id=${itemList.id}`, class: "secondary-btn", text: "Open list →" }),
     ])
   );
-}
-
-// Contacts feed the "who is it for" dropdown on each item. Fetched once; if it
-// fails the dropdown just offers Unassigned rather than blocking the list.
-async function ensureContacts() {
-  if (contacts) return contacts;
-  try {
-    contacts = await Global.fetchJSON("/api/contacts");
-  } catch (err) {
-    console.error("Failed to load contacts", err);
-    return [];
-  }
-  return contacts;
 }
 
 // Same drag rules as the list page (list.js initSortable): handle-only, done

@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -21,10 +21,37 @@ class ScrapeStatus(str, enum.Enum):
 DEFAULT_PRIORITY_LABELS = ["Low", "Medium", "High", "Critical", "Blocker"]
 
 
+# What a person can do on a list they're a member of. "owner" is whoever
+# created it (exactly one per list) and is the only one who can share, rename,
+# lock or delete it; "edit" works with the items; "view" can only read.
+ROLE_OWNER = "owner"
+ROLE_EDIT = "edit"
+ROLE_VIEW = "view"
+ROLE_RANK = {ROLE_VIEW: 1, ROLE_EDIT: 2, ROLE_OWNER: 3}
+
+
+class User(Base):
+    """Someone who has signed in (or been invited by email before they have).
+    Created on demand from the email Cloudflare Access vouches for - there is
+    no password or sign-up form (see app/auth.py)."""
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    # Always stored lowercased (crud.normalize_email).
+    email = Column(String, unique=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Contact(Base):
+    """One person's address book entry. A shared list uses its *owner's*
+    contacts (see crud.contact_usable_for_list); other members only ever see
+    the recipient's name."""
+
     __tablename__ = "contacts"
 
     id = Column(Integer, primary_key=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=True)
     email = Column(String, nullable=True)
@@ -40,16 +67,18 @@ class Category(Base):
     text reads legibly on `color`, picked by the user rather than computed."""
 
     __tablename__ = "categories"
+    # Names are unique per person (case-insensitively - see
+    # crud.category_name_taken), not across everyone.
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_categories_owner_id_name"),)
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, unique=True, nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String, nullable=False)
     color = Column(String, nullable=False)
     text_color = Column(String, nullable=False, default="dark", server_default="dark")
     # User-controlled order (drag on the Categories page); new rows go to the
     # end at max+10, leaving gaps (same pattern as trip-planning).
     sort_order = Column(Integer, nullable=False, default=0, server_default="0")
-
-    lists = relationship("ItemList", back_populates="category")
 
 
 class ItemList(Base):
@@ -60,12 +89,9 @@ class ItemList(Base):
     __tablename__ = "lists"
 
     id = Column(Integer, primary_key=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     name = Column(String, nullable=False)
     purpose = Column(String, nullable=True)
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
-    # Manual position on the lists index, lower first (see crud.reorder_lists).
-    # New lists go to the end.
-    sort_order = Column(Integer, nullable=False, default=0)
     # A locked list can't be deleted until it's unlocked (see crud.delete_list).
     locked = Column(Boolean, nullable=False, default=False)
     # How the list's items are ordered: "manual" (the drag order, sort_order)
@@ -77,7 +103,8 @@ class ItemList(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     items = relationship("Item", back_populates="list")
-    category = relationship("Category", back_populates="lists")
+    owner = relationship("User")
+    members = relationship("ListMember", back_populates="list", cascade="all, delete-orphan")
 
     @property
     def priority_labels(self):
@@ -97,6 +124,26 @@ class ItemList(Base):
         if cleaned:
             cleaned = ["" if label == default else label for label, default in zip(cleaned, DEFAULT_PRIORITY_LABELS)]
         self._priority_labels = cleaned if cleaned and any(cleaned) else None
+
+
+class ListMember(Base):
+    """One person's access to one list, plus how *they* have it arranged: the
+    list's position on their index and the category they filed it under are
+    per person, so sharing a list never rearranges anyone else's page."""
+
+    __tablename__ = "list_members"
+
+    list_id = Column(Integer, ForeignKey("lists.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    role = Column(String, nullable=False)
+    # Manual position on this person's lists index, lower first (see
+    # crud.reorder_lists). New lists go to the end.
+    sort_order = Column(Integer, nullable=False, default=0)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+
+    list = relationship("ItemList", back_populates="members")
+    user = relationship("User")
+    category = relationship("Category")
 
 
 class Item(Base):
