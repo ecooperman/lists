@@ -26,7 +26,7 @@ The SQLite database (`gifts.db`) is not created by the app itself - `alembic
 upgrade head` creates it. This only needs to be run once for a fresh
 install; see below for how schema changes are handled from here on.
 
-## Accounts and sharing
+## Accounts and access
 
 There is no sign-in form. Cloudflare Access already authenticates everyone
 before a request reaches the app and tells it who it was, so the app just
@@ -36,13 +36,40 @@ time it sees them. `GET /api/me` says who you are.
 - **Roles on a list:** `owner` (whoever created it - exactly one), `edit`
   (works with the items: add, edit, check off, delete, reorder, import, move,
   switch sort mode) and `view` (read only). Only the owner can rename, change
-  the purpose or priority labels, lock, delete or share a list. Anyone can
-  leave a list shared with them. A list you aren't on is a 404, the same as one
+  the purpose or priority labels, lock, delete a list or change who has access. Anyone can
+  leave a list they were given access to. A list you aren't on is a 404, the same as one
   that doesn't exist.
-- **Sharing:** the owner shares by email from "Edit list" -> "Shared with"
+- **Who has access:** the owner manages it from "Edit list" -> "Who has access"
   (`GET/POST /api/lists/{id}/members`, `PATCH/DELETE .../members/{user_id}`).
-  The person needn't have signed in yet; the list is waiting when they do. They
-  must also be allowed through Cloudflare Access, or they never get this far.
+  Only someone who already has an account can be added - they've signed in
+  before, or an invite for them was approved. Adding anyone else is a 404
+  ("No one with that email has signed in yet"), which the page turns into an
+  offer to request an invite.
+- **Inviting new people:** the owner asks for a new email to be let in, with a
+  role on that list (`GET/POST /api/lists/{id}/invites`, `DELETE
+  .../invites/{invite_id}` to withdraw a waiting one). It sits waiting until an
+  administrator (anyone in `ADMIN_EMAILS`) approves it on the **Invites** page
+  (`/invites.html`, `GET /api/admin/invites`, `POST .../{id}/approve` or
+  `.../decline`): approving adds the email to the Cloudflare Access group that
+  lets people through the login gate (`app/cloudflare.py`) and puts them on the
+  list, so it's already there when they first sign in. Details:
+  - Each person may ask for `INVITES_PER_USER` different people (default 5;
+    administrators are unlimited and their own requests are approved at once).
+    A request counts until the person withdraws it while it's waiting - being
+    declined or approved doesn't give the invite back, and neither does
+    deleting the list.
+  - Approval refuses (the request stays waiting) if Cloudflare isn't set up
+    (production only; locally the Cloudflare step is skipped), refuses the
+    change, or the group already holds `ACCESS_SEAT_CAP` emails (default 50,
+    Cloudflare's free limit).
+  - The administrator is told about each new request over whichever channels
+    are configured (`app/notify.py`): ntfy, Pushover and email, any combination.
+    A channel that fails never fails the request.
+  - Settings, all in `/etc/personal-apps/shared.env` (see `DEPLOYMENT.md`):
+    `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `CF_INVITEES_GROUP_ID`, `INVITES_PER_USER`,
+    `ACCESS_SEAT_CAP`; `NTFY_TOPIC` (+ `NTFY_SERVER`, `NTFY_TOKEN`);
+    `PUSHOVER_APP_TOKEN` + `PUSHOVER_USER_KEY`; `SMTP_HOST`, `SMTP_PORT`,
+    `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` + `NOTIFY_EMAIL`.
 - **Each person arranges lists themselves:** a list's position on your index and
   the category you filed it under belong to *you* (`list_members`), so sharing
   never rearranges anyone else's page. Categories are private to their creator,
@@ -80,7 +107,7 @@ talking to the API over `fetch`. That separation means the backend can be
 tested and used entirely on its own, and the frontend can later be swapped
 for something richer without touching the API.
 
-List endpoints (all need you to be signed in; see "Accounts and sharing" for
+List endpoints (all need you to be signed in; see "Accounts and access" for
 who may do what):
 
 - `GET /api/lists` - the lists you're on, in *your* manual order, each with
@@ -100,8 +127,11 @@ who may do what):
 - `GET /api/lists/{id}/contacts` - who its items can be for (the owner's
   contacts, names only)
 - `GET /api/lists/{id}/members` (owner) - everyone on the list
-- `POST /api/lists/{id}/members` (owner) - body `{"email": "...", "role": "edit" | "view"}`
+- `POST /api/lists/{id}/members` (owner) - body `{"email": "...", "role": "edit" | "view"}`; the person must already have an account (404 otherwise)
 - `PATCH /api/lists/{id}/members/{user_id}` (owner) - change a role
+- `GET /api/lists/{id}/invites` (owner) - requests still waiting or declined
+- `POST /api/lists/{id}/invites` (owner) - ask for a new person to be let in, same body as `members`
+- `DELETE /api/lists/{id}/invites/{invite_id}` (owner) - withdraw a waiting request
 - `DELETE /api/lists/{id}/members/{user_id}` - the owner removes anyone; anyone
   else can remove only themselves
 - `DELETE /api/lists/{id}` - (owner) delete a list, for everyone it's shared with. 409s if the list is `locked`

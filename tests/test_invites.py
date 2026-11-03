@@ -1,0 +1,269 @@
+"""Letting new people in: a list's owner asks, the administrator decides. The
+Cloudflare call and the notification are stubbed here (tests/test_cloudflare.py
+and tests/test_notify.py cover those); what matters in this file is who may ask
+and decide, how many times, and what each outcome leaves behind."""
+import pytest
+
+from app import cloudflare, config, models, notify
+from tests.test_access import make_list, share
+
+NEWBIE = "newbie@example.com"
+
+
+@pytest.fixture()
+def allowed(monkeypatch):
+    """Stand-in for Cloudflare: the emails that were let through the gate."""
+    emails = []
+    monkeypatch.setattr(cloudflare, "allow_email", emails.append)
+    return emails
+
+
+@pytest.fixture()
+def sent(monkeypatch):
+    """Stand-in for the notification channels: what the administrator was told."""
+    messages = []
+    monkeypatch.setattr(notify, "notify", lambda title, message, link=None: messages.append((title, message, link)))
+    return messages
+
+
+def ask(person, list_id, email=NEWBIE, role="edit"):
+    return person.post(f"/api/lists/{list_id}/invites", {"email": email, "role": role})
+
+
+# --- adding people vs. asking for them ---------------------------------------
+
+
+def test_asking_for_a_new_person_waits_for_approval(alice, admin, allowed, sent):
+    lst = make_list(alice)
+    resp = ask(alice, lst["id"], "  NewBie@Example.com ")
+    assert resp.status_code == 200
+    assert (resp.json()["email"], resp.json()["status"], resp.json()["role"]) == (NEWBIE, "pending", "edit")
+
+    assert allowed == []  # nobody let through yet
+    members = [m["email"] for m in alice.get(f"/api/lists/{lst['id']}/members").json()]
+    assert members == [alice.email]
+    assert [i["email"] for i in alice.get(f"/api/lists/{lst['id']}/invites").json()] == [NEWBIE]
+
+
+def test_the_administrator_is_told_about_each_request(alice, allowed, sent):
+    lst = make_list(alice)
+    ask(alice, lst["id"])
+    assert len(sent) == 1
+    title, message, link = sent[0]
+    assert alice.email in message and NEWBIE in message and "edit" in message
+    assert link == f"{config.PUBLIC_URL}/invites.html"
+
+
+def test_a_failing_notification_doesnt_fail_the_request(alice, monkeypatch):
+    def broken(title, message, link):
+        raise RuntimeError("push service is down")
+
+    monkeypatch.setattr(notify, "CHANNELS", {"ntfy": broken})
+    lst = make_list(alice)
+    assert ask(alice, lst["id"]).status_code == 200
+
+
+def test_someone_with_an_account_is_added_not_invited(alice, bob):
+    lst = make_list(alice)
+    bob.get("/api/me")
+    assert ask(alice, lst["id"], bob.email).status_code == 409
+
+
+def test_a_bad_address_or_a_repeat_request_is_refused(alice):
+    lst = make_list(alice)
+    assert ask(alice, lst["id"], "not-an-email").status_code == 400
+    assert ask(alice, lst["id"]).status_code == 200
+    assert ask(alice, lst["id"], NEWBIE.upper()).status_code == 409
+
+
+def test_only_the_owner_can_ask(alice, bob, carol):
+    lst = make_list(alice)
+    share(alice, lst["id"], bob, "edit")
+    assert ask(bob, lst["id"]).status_code == 403  # an editor can't manage who has access
+    assert ask(carol, lst["id"]).status_code == 404  # a stranger can't even see the list
+    assert bob.get(f"/api/lists/{lst['id']}/invites").status_code == 403
+    assert carol.get(f"/api/lists/{lst['id']}/invites").status_code == 404
+
+
+# --- how many each person may ask for ---------------------------------------------
+
+
+def test_each_person_gets_a_limited_number_of_invites(alice, monkeypatch, allowed, sent):
+    monkeypatch.setattr(config, "INVITES_PER_USER", 2)
+    lst = make_list(alice)
+    assert alice.get("/api/me").json()["invites_left"] == 2
+    assert ask(alice, lst["id"], "a@example.com").status_code == 200
+    assert ask(alice, lst["id"], "b@example.com").status_code == 200
+    assert alice.get("/api/me").json()["invites_left"] == 0
+    assert ask(alice, lst["id"], "c@example.com").status_code == 403
+
+
+def test_asking_for_the_same_person_on_another_list_costs_nothing_more(alice, monkeypatch, allowed, sent):
+    monkeypatch.setattr(config, "INVITES_PER_USER", 1)
+    first, second = make_list(alice, "First"), make_list(alice, "Second")
+    assert ask(alice, first["id"], "a@example.com").status_code == 200
+    assert ask(alice, second["id"], "a@example.com").status_code == 200
+    assert ask(alice, second["id"], "b@example.com").status_code == 403
+
+
+def test_withdrawing_a_waiting_request_gives_the_invite_back(alice, monkeypatch, allowed, sent):
+    monkeypatch.setattr(config, "INVITES_PER_USER", 1)
+    lst = make_list(alice)
+    invite = ask(alice, lst["id"], "a@example.com").json()
+    assert ask(alice, lst["id"], "b@example.com").status_code == 403
+    assert alice.delete(f"/api/lists/{lst['id']}/invites/{invite['id']}").status_code == 200
+    assert alice.get("/api/me").json()["invites_left"] == 1
+    assert ask(alice, lst["id"], "b@example.com").status_code == 200
+
+
+def test_a_declined_request_still_uses_up_the_invite(alice, admin, monkeypatch, allowed, sent):
+    monkeypatch.setattr(config, "INVITES_PER_USER", 1)
+    lst = make_list(alice)
+    invite = ask(alice, lst["id"], "a@example.com").json()
+    assert admin.post(f"/api/admin/invites/{invite['id']}/decline").status_code == 200
+    assert ask(alice, lst["id"], "b@example.com").status_code == 403
+    # ...and she can neither withdraw it nor ask again for the same person.
+    assert alice.delete(f"/api/lists/{lst['id']}/invites/{invite['id']}").status_code == 409
+    assert ask(alice, lst["id"], "a@example.com").status_code == 409
+    shown = alice.get(f"/api/lists/{lst['id']}/invites").json()
+    assert [(i["email"], i["status"]) for i in shown] == [("a@example.com", "declined")]
+
+
+def test_the_administrator_has_no_limit_and_needs_no_approval(admin, monkeypatch, allowed, sent):
+    monkeypatch.setattr(config, "INVITES_PER_USER", 1)
+    lst = make_list(admin)
+    assert admin.get("/api/me").json()["invites_left"] is None
+    for email in ("a@example.com", "b@example.com", "c@example.com"):
+        resp = ask(admin, lst["id"], email)
+        assert (resp.status_code, resp.json()["status"]) == (200, "approved")
+    assert allowed == ["a@example.com", "b@example.com", "c@example.com"]
+    assert sent == []  # nobody needs telling about their own decision
+    members = [m["email"] for m in admin.get(f"/api/lists/{lst['id']}/members").json()]
+    assert members == [admin.email, "a@example.com", "b@example.com", "c@example.com"]
+
+
+# --- the administrator decides ----------------------------------------------------
+
+
+def test_the_queue_shows_who_asked_for_whom(alice, admin, allowed, sent):
+    lst = make_list(alice, "Birthday ideas")
+    ask(alice, lst["id"], role="view")
+    queue = admin.get("/api/admin/invites").json()
+    assert len(queue) == 1
+    assert (queue[0]["email"], queue[0]["invited_by_email"], queue[0]["list_name"], queue[0]["role"]) == (
+        NEWBIE,
+        alice.email,
+        "Birthday ideas",
+        "view",
+    )
+    assert admin.get("/api/me").json()["pending_invites"] == 1
+    assert alice.get("/api/me").json()["pending_invites"] == 0  # the count is the administrator's
+
+
+def test_approving_lets_them_through_and_puts_them_on_the_list(alice, admin, sign_in, allowed, sent):
+    lst = make_list(alice)
+    invite = ask(alice, lst["id"], role="edit").json()
+
+    resp = admin.post(f"/api/admin/invites/{invite['id']}/approve")
+    assert resp.status_code == 200 and resp.json()["status"] == "approved"
+    assert allowed == [NEWBIE]
+
+    # They sign in for the first time and the list is already there.
+    newbie = sign_in(NEWBIE)
+    assert [(l["name"], l["my_role"]) for l in newbie.get("/api/lists").json()] == [("Gifts", "edit")]
+    # ...and is now a member, so the request is no longer listed as outstanding.
+    assert NEWBIE in [m["email"] for m in alice.get(f"/api/lists/{lst['id']}/members").json()]
+    assert alice.get(f"/api/lists/{lst['id']}/invites").json() == []
+    assert admin.get("/api/admin/invites").json() == []
+    assert admin.get("/api/me").json()["pending_invites"] == 0
+
+
+def test_declining_changes_nothing_in_cloudflare_or_the_list(alice, admin, sign_in, allowed, sent):
+    lst = make_list(alice)
+    invite = ask(alice, lst["id"]).json()
+    assert admin.post(f"/api/admin/invites/{invite['id']}/decline").status_code == 200
+    assert allowed == []
+    assert NEWBIE not in [m["email"] for m in alice.get(f"/api/lists/{lst['id']}/members").json()]
+    assert sign_in(NEWBIE).get("/api/lists").json() == []
+
+
+def test_a_request_can_only_be_decided_once(alice, admin, allowed, sent):
+    lst = make_list(alice)
+    invite = ask(alice, lst["id"]).json()
+    assert admin.post(f"/api/admin/invites/{invite['id']}/approve").status_code == 200
+    assert admin.post(f"/api/admin/invites/{invite['id']}/approve").status_code == 409
+    assert admin.post(f"/api/admin/invites/{invite['id']}/decline").status_code == 409
+    assert admin.post("/api/admin/invites/9999/approve").status_code == 404
+    assert allowed == [NEWBIE]
+
+
+def test_only_the_administrator_can_see_or_decide(alice, bob, admin, allowed, sent):
+    lst = make_list(alice)
+    invite = ask(alice, lst["id"]).json()
+    for who in (alice, bob):  # even the person who asked
+        assert who.get("/api/admin/invites").status_code == 403
+        assert who.post(f"/api/admin/invites/{invite['id']}/approve").status_code == 403
+        assert who.post(f"/api/admin/invites/{invite['id']}/decline").status_code == 403
+    assert allowed == []
+    assert [i["email"] for i in admin.get("/api/admin/invites").json()] == [NEWBIE]
+
+
+@pytest.mark.parametrize(
+    "error, status",
+    [
+        (cloudflare.NotConfigured("not set up"), 503),
+        (cloudflare.SeatCapReached("group is full"), 409),
+        (cloudflare.CloudflareError("Cloudflare refused"), 502),
+    ],
+    ids=["not configured", "seat cap", "cloudflare error"],
+)
+def test_if_cloudflare_cant_do_it_the_request_stays_waiting(alice, admin, sent, monkeypatch, error, status):
+    def refuse(email):
+        raise error
+
+    monkeypatch.setattr(cloudflare, "allow_email", refuse)
+    lst = make_list(alice)
+    invite = ask(alice, lst["id"]).json()
+
+    resp = admin.post(f"/api/admin/invites/{invite['id']}/approve")
+    assert resp.status_code == status and resp.json()["detail"] == str(error)
+    # Nobody is recorded as let in who still can't sign in.
+    assert NEWBIE not in [m["email"] for m in alice.get(f"/api/lists/{lst['id']}/members").json()]
+    assert [i["email"] for i in admin.get("/api/admin/invites").json()] == [NEWBIE]
+
+
+def test_locally_with_cloudflare_unset_approving_still_works(alice, admin, sent):
+    lst = make_list(alice)
+    invite = ask(alice, lst["id"]).json()
+    assert admin.post(f"/api/admin/invites/{invite['id']}/approve").status_code == 200
+
+
+# --- withdrawing, and what a deleted list leaves behind ----------------------------
+
+
+def test_only_a_lists_owner_can_withdraw_its_requests(alice, bob, sent):
+    mine, other = make_list(alice, "Mine"), make_list(bob, "Other")
+    invite = ask(alice, mine["id"]).json()
+    assert bob.delete(f"/api/lists/{mine['id']}/invites/{invite['id']}").status_code == 404
+    # The id has to belong to the list in the URL, not just to the caller's account.
+    assert alice.delete(f"/api/lists/{mine['id']}/invites/9999").status_code == 404
+    assert bob.delete(f"/api/lists/{other['id']}/invites/{invite['id']}").status_code == 404
+    assert alice.get(f"/api/lists/{mine['id']}/invites").json() != []
+
+
+def test_deleting_a_list_drops_its_waiting_requests_but_not_approved_ones(alice, admin, monkeypatch, allowed, sent, db):
+    monkeypatch.setattr(config, "INVITES_PER_USER", 2)
+    lst = make_list(alice)
+    approved = ask(alice, lst["id"], "a@example.com").json()
+    ask(alice, lst["id"], "b@example.com")
+    admin.post(f"/api/admin/invites/{approved['id']}/approve")
+
+    assert alice.delete(f"/api/lists/{lst['id']}").status_code == 200
+    assert admin.get("/api/admin/invites").json() == []
+    kept = db.query(models.Invite).all()
+    assert [(i.email, i.status, i.list_id) for i in kept] == [("a@example.com", "approved", None)]
+
+    # Deleting the list doesn't hand the approved person's invite back.
+    other = make_list(alice, "Other")
+    assert ask(alice, other["id"], "c@example.com").status_code == 200
+    assert ask(alice, other["id"], "d@example.com").status_code == 403

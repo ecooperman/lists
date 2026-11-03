@@ -46,6 +46,11 @@ class Me(BaseModel):
 
     id: int
     email: str
+    is_admin: bool = False
+    # How many more people they may ask to have let in; null = no limit.
+    invites_left: Optional[int] = None
+    # Requests waiting for approval (administrators only, else 0).
+    pending_invites: int = 0
 
 
 class CategoryBase(BaseModel):
@@ -139,6 +144,30 @@ class MemberAdd(BaseModel):
 
 class MemberUpdate(BaseModel):
     role: Literal["edit", "view"]
+
+
+class InviteCreate(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    role: Literal["edit", "view"]
+
+
+class Invite(BaseModel):
+    """A request for someone without an account, as its inviter sees it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: str
+    role: Literal["edit", "view"]
+    status: Literal["pending", "approved", "declined"]
+    created_at: datetime
+
+
+class AdminInvite(Invite):
+    """The same request as the administrator sees it, with who and what for."""
+
+    invited_by_email: str
+    list_name: Optional[str] = None
 
 
 class ItemBase(BaseModel):

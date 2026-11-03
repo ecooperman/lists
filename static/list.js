@@ -97,7 +97,7 @@ const ROLE_TEXT = { edit: "You can edit this list", view: "You can only view thi
 function applyRole() {
   const owner = isOwner();
   const access = document.getElementById("list-access");
-  access.textContent = owner ? "" : `Shared by ${currentList.owner_email} - ${ROLE_TEXT[currentList.my_role]}`;
+  access.textContent = owner ? "" : `Owned by ${currentList.owner_email} - ${ROLE_TEXT[currentList.my_role]}`;
   access.classList.toggle("hidden", owner);
   document.getElementById("show-edit-list").classList.toggle("hidden", !owner);
   document.getElementById("leave-list").classList.toggle("hidden", owner);
@@ -237,14 +237,18 @@ function initEditListForm() {
   });
 }
 
-// --- sharing (owner), leaving (everyone else) ---
+// --- who has access (owner), leaving (everyone else) ---
 
 const ROLE_LABELS = { owner: "Owner", edit: "Can edit", view: "Can view" };
 
 function initSharing() {
   const memberList = document.getElementById("member-list");
+  const inviteList = document.getElementById("invite-list");
   const emailInput = document.getElementById("member-email");
   const roleSelect = document.getElementById("member-role");
+  const prompt = document.getElementById("invite-prompt");
+  const promptText = document.getElementById("invite-prompt-text");
+  const requestBtn = document.getElementById("invite-request");
 
   const send = (url, method, body) =>
     Global.fetchJSON(url, {
@@ -286,7 +290,7 @@ function initSharing() {
         });
         const remove = Global.el("button", { type: "button", class: "cancel-btn", text: "Remove" });
         remove.addEventListener("click", async () => {
-          if (!confirm(`Stop sharing "${currentList.name}" with ${member.email}?`)) return;
+          if (!confirm(`Remove ${member.email}'s access to "${currentList.name}"?`)) return;
           try {
             await send(`${LIST_API}/members/${member.user_id}`, "DELETE");
             loadMembers();
@@ -300,31 +304,127 @@ function initSharing() {
     );
   }
 
-  document.getElementById("show-edit-list").addEventListener("click", loadMembers);
+  // Requests for people with no account yet: waiting for an administrator, or
+  // turned down. (Approved ones are people on the list by then.)
+  async function loadInvites() {
+    let invites;
+    try {
+      invites = await Global.fetchJSON(`${LIST_API}/invites`);
+    } catch (err) {
+      Global.showMessage(err.message, "error");
+      return;
+    }
+    inviteList.replaceChildren(
+      ...invites.map((invite) => {
+        const pending = invite.status === "pending";
+        const row = Global.el("div", { class: "member-row" }, [
+          Global.el("span", { class: "member-email", text: `${invite.email} - ${ROLE_LABELS[invite.role].toLowerCase()}` }),
+          Global.el("span", { class: "item-badge item-badge-muted", text: pending ? "Awaiting approval" : "Declined" }),
+        ]);
+        if (pending) {
+          const withdraw = Global.el("button", { type: "button", class: "cancel-btn", text: "Withdraw" });
+          withdraw.addEventListener("click", async () => {
+            try {
+              await send(`${LIST_API}/invites/${invite.id}`, "DELETE");
+              loadInvites();
+            } catch (err) {
+              Global.showMessage(err.message, "error");
+            }
+          });
+          row.appendChild(withdraw);
+        }
+        return row;
+      })
+    );
+  }
 
-  document.getElementById("member-add").addEventListener("click", async () => {
+  document.getElementById("show-edit-list").addEventListener("click", () => {
+    loadMembers();
+    loadInvites();
+  });
+
+  function hidePrompt() {
+    prompt.classList.add("hidden");
+  }
+
+  // The box held someone with no account: say so, and offer to ask for them.
+  async function offerInvite() {
+    let left = null;
+    try {
+      left = (await Global.fetchJSON("/api/me")).invites_left;
+    } catch (err) {
+      // fall through: the server enforces the limit anyway
+    }
+    const none = left === 0;
+    promptText.textContent = none
+      ? "No one with that email has signed in yet, and you've used all your invites."
+      : "No one with that email has signed in yet. You can ask for them to be let in - an administrator has to approve it." +
+        (left === null ? "" : ` You have ${left} invite${left === 1 ? "" : "s"} left.`);
+    requestBtn.classList.toggle("hidden", none);
+    prompt.classList.remove("hidden");
+  }
+
+  async function addPerson() {
     const email = emailInput.value.trim();
     if (!email) return;
+    hidePrompt();
+    let res;
     try {
-      await send(`${LIST_API}/members`, "POST", { email, role: roleSelect.value });
+      // Raw fetch (not Global.fetchJSON): a 404 here means "no such person
+      // yet", which is a prompt rather than an error.
+      res = await fetch(`${LIST_API}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, role: roleSelect.value }),
+      });
+    } catch (err) {
+      Global.showMessage("Couldn't reach the server.", "error");
+      return;
+    }
+    if (res.ok) {
+      emailInput.value = "";
+      Global.showMessage(`${email} now has access.`, "success");
+      loadMembers();
+    } else if (res.status === 404) {
+      offerInvite();
+    } else {
+      const body = await res.json().catch(() => ({}));
+      Global.showMessage(typeof body.detail === "string" ? body.detail : "Couldn't add them.", "error");
+    }
+  }
+
+  document.getElementById("member-add").addEventListener("click", addPerson);
+  requestBtn.addEventListener("click", async () => {
+    const email = emailInput.value.trim();
+    try {
+      const invite = await send(`${LIST_API}/invites`, "POST", { email, role: roleSelect.value });
+      Global.showMessage(
+        invite.status === "approved"
+          ? `${invite.email} has been let in and added.`
+          : `Requested. ${invite.email} will be added once it's approved.`,
+        "success"
+      );
     } catch (err) {
       Global.showMessage(err.message, "error");
       return;
     }
     emailInput.value = "";
-    Global.showMessage(`Shared with ${email}.`, "success");
+    hidePrompt();
     loadMembers();
+    loadInvites();
   });
-  // Enter in the box shares rather than saving the whole form.
+  // Changing the address makes the offer about the old one stale.
+  emailInput.addEventListener("input", hidePrompt);
+  // Enter in the box adds rather than saving the whole form.
   emailInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      document.getElementById("member-add").click();
+      addPerson();
     }
   });
 
   document.getElementById("leave-list").addEventListener("click", async () => {
-    if (!confirm(`Leave "${currentList.name}"? You'll lose access until ${currentList.owner_email} shares it with you again.`)) return;
+    if (!confirm(`Leave "${currentList.name}"? You'll lose access until ${currentList.owner_email} adds you again.`)) return;
     try {
       const me = await Global.fetchJSON("/api/me");
       await send(`${LIST_API}/members/${me.id}`, "DELETE");

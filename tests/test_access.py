@@ -18,6 +18,9 @@ def make_item(person, list_id, name="Socks", **extra):
 
 
 def share(owner, list_id, person, role):
+    # Only people with an account can be added, and an account is made by
+    # signing in - so they do that first.
+    person.get("/api/me")
     resp = owner.post(f"/api/lists/{list_id}/members", {"email": person.email, "role": role})
     assert resp.status_code == 200, resp.text
     return resp.json()
@@ -162,19 +165,28 @@ def test_deleting_a_list_removes_it_for_everyone(alice, bob):
     assert bob.get("/api/lists").json() == []
 
 
-def test_invite_before_the_person_has_ever_signed_in(alice, carol):
+def test_someone_who_has_never_signed_in_cant_be_added(alice, carol, db):
     lst = make_list(alice)
-    share(alice, lst["id"], carol, "view")  # carol has never made a request
-    seen = carol.get("/api/lists").json()
-    assert [(l["name"], l["my_role"]) for l in seen] == [("Gifts", "view")]
+    resp = alice.post(f"/api/lists/{lst['id']}/members", {"email": carol.email, "role": "view"})
+    assert resp.status_code == 404
+    # Refusing leaves no account behind, so she isn't quietly given the list later.
+    assert db.query(models.User).filter_by(email=carol.email).first() is None
+    assert carol.get("/api/lists").json() == []
+
+
+def test_the_pre_accounts_placeholder_cant_be_added(alice):
+    lst = make_list(alice)
+    resp = alice.post(f"/api/lists/{lst['id']}/members", {"email": "legacy-owner@lists.invalid", "role": "view"})
+    assert resp.status_code == 404
 
 
 def test_emails_are_case_insensitive(alice, client):
-    lst = make_list(alice)
-    alice.post(f"/api/lists/{lst['id']}/members", {"email": "  Dana@Example.COM ", "role": "view"})
     from tests.conftest import Person
 
     dana = Person(client, "DANA@example.com")
+    dana.get("/api/me")
+    lst = make_list(alice)
+    assert alice.post(f"/api/lists/{lst['id']}/members", {"email": "  dana@Example.COM ", "role": "view"}).status_code == 200
     assert [l["name"] for l in dana.get("/api/lists").json()] == ["Gifts"]
 
 

@@ -1,14 +1,15 @@
 import re
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import crud, models, schemas
+from .. import crud, models, notify, schemas
 from ..access import check_role, list_access
-from ..auth import current_user
+from ..auth import current_user, is_admin
 from ..deps import get_db
 from ..importer import parse_dash_list
+from .invites import approve
 
 router = APIRouter(prefix="/api/lists", tags=["lists"])
 
@@ -82,7 +83,7 @@ def delete_list(
     return {"ok": True, "deleted_items": deleted_items}
 
 
-# --- sharing ---
+# --- who has access ---
 
 
 def _member_out(member: models.ListMember) -> schemas.Member:
@@ -100,10 +101,15 @@ def add_member(
     member: models.ListMember = Depends(list_access(models.ROLE_OWNER)),
     db: Session = Depends(get_db),
 ):
+    """Only people who already have an account can be added; someone new has
+    to be asked for (POST .../invites) and approved first."""
     email = crud.normalize_email(body.email)
     if not _EMAIL.match(email):
         raise HTTPException(status_code=400, detail="That doesn't look like an email address")
-    added = crud.add_member(db, member.list_id, email, body.role)
+    user = crud.get_account(db, email)
+    if user is None:
+        raise HTTPException(status_code=404, detail="No one with that email has signed in yet")
+    added = crud.add_member(db, member.list_id, user, body.role)
     if added is None:
         raise HTTPException(status_code=409, detail="That person already has access to this list")
     return _member_out(crud.get_member(db, member.list_id, added.user_id))
@@ -140,6 +146,58 @@ def remove_member(
     if target.role == models.ROLE_OWNER:
         raise HTTPException(status_code=400, detail="The owner can't be removed - delete the list instead")
     crud.remove_member(db, target)
+    return {"ok": True}
+
+
+# --- asking for someone new to be let in ---
+
+
+@router.get("/{list_id}/invites", response_model=List[schemas.Invite])
+def list_invites(member: models.ListMember = Depends(list_access(models.ROLE_OWNER)), db: Session = Depends(get_db)):
+    """This list's requests that are waiting or were declined."""
+    return crud.get_list_invites(db, member.list_id)
+
+
+@router.post("/{list_id}/invites", response_model=schemas.Invite)
+def request_invite(
+    body: schemas.InviteCreate,
+    background: BackgroundTasks,
+    member: models.ListMember = Depends(list_access(models.ROLE_OWNER)),
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Ask for someone with no account to be let in, with a role on this list.
+    The administrator is told and decides; the person is added to the list when
+    they approve. An administrator's own request is approved straight away."""
+    email = crud.normalize_email(body.email)
+    if not _EMAIL.match(email):
+        raise HTTPException(status_code=400, detail="That doesn't look like an email address")
+    if crud.get_account(db, email) is not None:
+        raise HTTPException(status_code=409, detail="They already have an account - add them to the list instead")
+    invite, problem = crud.create_invite(db, member.list_id, user, email, body.role)
+    if problem == "duplicate":
+        raise HTTPException(status_code=409, detail="You've already asked for that person on this list")
+    if problem == "none_left":
+        raise HTTPException(status_code=403, detail="You've used all your invites")
+    if is_admin(user):
+        return approve(db, invite)
+    background.add_task(notify.invite_requested, user.email, invite.email, invite.role)
+    return invite
+
+
+@router.delete("/{list_id}/invites/{invite_id}")
+def cancel_invite(
+    invite_id: int,
+    member: models.ListMember = Depends(list_access(models.ROLE_OWNER)),
+    db: Session = Depends(get_db),
+):
+    """Withdraw a request that's still waiting (this gives the invite back)."""
+    invite = crud.get_invite(db, invite_id)
+    if invite is None or invite.list_id != member.list_id:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    if invite.status != models.INVITE_PENDING:
+        raise HTTPException(status_code=409, detail="Only a request that's still waiting can be withdrawn")
+    crud.cancel_invite(db, invite)
     return {"ok": True}
 
 

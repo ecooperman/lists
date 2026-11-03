@@ -302,13 +302,15 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
     right.appendChild(Global.el("span", { class: "item-badge item-badge-muted", text: "Locked" }));
   }
 
-  // Lists shared with you say so (and what you can do); your own say it only
-  // once you've shared them with someone.
+  // A list someone else owns says who, and what you can do with it; your own
+  // says how many people have access once it's more than you.
   if (itemList.my_role !== "owner") {
-    const text = itemList.my_role === "view" ? "View only" : "Shared";
-    right.appendChild(Global.el("span", { class: "item-badge item-badge-muted", title: `Shared by ${itemList.owner_email}`, text }));
+    const text = itemList.my_role === "view" ? "View only" : `${itemList.member_count} people`;
+    right.appendChild(Global.el("span", { class: "item-badge item-badge-muted", title: `Owned by ${itemList.owner_email}`, text }));
   } else if (itemList.member_count > 1) {
-    right.appendChild(Global.el("span", { class: "item-badge item-badge-muted", title: "Shared with others", text: "Shared" }));
+    right.appendChild(
+      Global.el("span", { class: "item-badge item-badge-muted", title: "People with access", text: `${itemList.member_count} people` })
+    );
   }
 
   const countBadge = Global.el("span", { class: "item-badge item-badge-accent" });

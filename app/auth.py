@@ -80,3 +80,14 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> models.User
     if "@" not in email:
         raise HTTPException(status_code=401, detail="Not signed in")
     return crud.get_or_create_user(db, email)
+
+
+def is_admin(user: models.User) -> bool:
+    return user.email in config.ADMIN_EMAILS
+
+
+def require_admin(user: models.User = Depends(current_user)) -> models.User:
+    """For what only the app's administrator may do (approving invites)."""
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Only the app's administrator can do that")
+    return user

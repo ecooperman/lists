@@ -328,12 +328,18 @@ def delete_list(db: Session, member: models.ListMember, force: bool = False):
     if item_count and not force:
         return "in_use", 0
     deleted = db.query(models.Item).filter(models.Item.list_id == db_list.id).delete()
+    # Unfinished invite requests go with the list; approved ones stay (the
+    # ORM nulls their list_id) because the person was let in and still counts
+    # against what their inviter may ask for.
+    db.query(models.Invite).filter(
+        models.Invite.list_id == db_list.id, models.Invite.status != models.INVITE_APPROVED
+    ).delete()
     db.delete(db_list)  # its member rows go with it (cascade)
     db.commit()
     return "ok", deleted
 
 
-# --- sharing ---
+# --- who has access ---
 
 
 def get_members(db: Session, list_id: int):
@@ -346,11 +352,19 @@ def get_members(db: Session, list_id: int):
     )
 
 
-def add_member(db: Session, list_id: int, email: str, role: str):
-    """Share a list with an email. They needn't have signed in yet - their
-    user row is made now and simply picked up when they do. Returns the new
-    membership, or None if they're already on the list."""
-    user = get_user_by_email(db, email) or _create_user(db, email)
+def get_account(db: Session, email: str):
+    """The person with this (already normalized) email if they have an account
+    - they've signed in, or an invite for them was approved. Nobody else: you
+    can't add a stranger to a list, only ask for them to be let in (see
+    create_invite)."""
+    if email == LEGACY_OWNER_EMAIL:
+        return None
+    return get_user_by_email(db, email)
+
+
+def add_member(db: Session, list_id: int, user: models.User, role: str):
+    """Give an existing user access to a list. Returns the new membership, or
+    None if they're already on it."""
     if db.query(models.ListMember).filter_by(list_id=list_id, user_id=user.id).first() is not None:
         return None
     member = models.ListMember(list_id=list_id, user_id=user.id, role=role, sort_order=_next_list_order(db, user.id))
@@ -379,6 +393,111 @@ def set_member_role(db: Session, member: models.ListMember, role: str):
 def remove_member(db: Session, member: models.ListMember):
     db.delete(member)
     db.commit()
+
+
+# --- invites ---
+#
+# Asking for someone with no account to be let in. A list's owner asks, an
+# administrator decides (see app/routers/invites.py for the Cloudflare step).
+
+
+def _is_admin_email(user: models.User) -> bool:
+    return user.email in config.ADMIN_EMAILS
+
+
+def invites_left(db: Session, user: models.User):
+    """How many more people this person may ask for, or None for no limit
+    (administrators). Each different email they've asked for counts once, in
+    any state - waiting, approved, declined - until they cancel a waiting one,
+    so being refused doesn't hand the slot back to be spent again."""
+    if _is_admin_email(user):
+        return None
+    used = (
+        db.query(func.count(func.distinct(models.Invite.email))).filter(models.Invite.invited_by_id == user.id).scalar()
+    )
+    return max(config.INVITES_PER_USER - used, 0)
+
+
+def create_invite(db: Session, list_id: int, inviter: models.User, email: str, role: str):
+    """Returns (invite, None), or (None, reason) with reason "duplicate" (this
+    person was already asked for on this list) or "none_left"."""
+    if db.query(models.Invite).filter_by(list_id=list_id, email=email).first() is not None:
+        return None, "duplicate"
+    left = invites_left(db, inviter)
+    asked_before = db.query(models.Invite).filter_by(invited_by_id=inviter.id, email=email).first() is not None
+    if left is not None and left <= 0 and not asked_before:
+        return None, "none_left"
+    invite = models.Invite(list_id=list_id, email=email, role=role, invited_by_id=inviter.id)
+    db.add(invite)
+    try:
+        db.commit()
+    except IntegrityError:  # the same request raced in twice
+        db.rollback()
+        return None, "duplicate"
+    db.refresh(invite)
+    return invite, None
+
+
+def get_invite(db: Session, invite_id: int):
+    return (
+        db.query(models.Invite)
+        .options(joinedload(models.Invite.list), joinedload(models.Invite.invited_by))
+        .filter(models.Invite.id == invite_id)
+        .first()
+    )
+
+
+def get_list_invites(db: Session, list_id: int):
+    """Requests on this list still to be (or already) answered - approved ones
+    are people on the list by now, so they show up as members instead."""
+    return (
+        db.query(models.Invite)
+        .filter(models.Invite.list_id == list_id, models.Invite.status != models.INVITE_APPROVED)
+        .order_by(models.Invite.id)
+        .all()
+    )
+
+
+def pending_invite_count(db: Session) -> int:
+    return db.query(func.count(models.Invite.id)).filter(models.Invite.status == models.INVITE_PENDING).scalar()
+
+
+def get_pending_invites(db: Session):
+    invites = (
+        db.query(models.Invite)
+        .options(joinedload(models.Invite.list), joinedload(models.Invite.invited_by))
+        .filter(models.Invite.status == models.INVITE_PENDING)
+        .order_by(models.Invite.id)
+        .all()
+    )
+    for invite in invites:
+        invite.invited_by_email = invite.invited_by.email
+        invite.list_name = invite.list.name if invite.list is not None else None
+    return invites
+
+
+def cancel_invite(db: Session, invite: models.Invite) -> None:
+    db.delete(invite)
+    db.commit()
+
+
+def grant_invite(db: Session, invite: models.Invite) -> models.Invite:
+    """Record that the invited person was let in: they get an account (picked
+    up when they first sign in) and their place on the list."""
+    user = get_account(db, invite.email) or _create_user(db, invite.email)
+    if invite.list_id is not None:
+        add_member(db, invite.list_id, user, invite.role)  # None if they're somehow on it already
+    invite.status = models.INVITE_APPROVED
+    invite.decided_at = datetime.utcnow()
+    db.commit()
+    return invite
+
+
+def decline_invite(db: Session, invite: models.Invite) -> models.Invite:
+    invite.status = models.INVITE_DECLINED
+    invite.decided_at = datetime.utcnow()
+    db.commit()
+    return invite
 
 
 # --- items ---

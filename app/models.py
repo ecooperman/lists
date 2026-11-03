@@ -105,6 +105,9 @@ class ItemList(Base):
     items = relationship("Item", back_populates="list")
     owner = relationship("User")
     members = relationship("ListMember", back_populates="list", cascade="all, delete-orphan")
+    # No delete cascade: crud.delete_list removes the unfinished requests and
+    # leaves the approved ones (their list_id goes NULL).
+    invites = relationship("Invite", back_populates="list")
 
     @property
     def priority_labels(self):
@@ -144,6 +147,34 @@ class ListMember(Base):
     list = relationship("ItemList", back_populates="members")
     user = relationship("User")
     category = relationship("Category")
+
+
+INVITE_PENDING = "pending"
+INVITE_APPROVED = "approved"
+INVITE_DECLINED = "declined"
+
+
+class Invite(Base):
+    """A list owner's request to let someone who has no account yet in, with
+    a role on that list. An administrator approves it (the email is added to
+    Cloudflare's allowed group and the person is put on the list) or declines
+    it. One request per person per list. Approved requests outlive their list
+    (list_id goes NULL) so they keep counting against the inviter's allowance."""
+
+    __tablename__ = "invites"
+    __table_args__ = (UniqueConstraint("list_id", "email", name="uq_invites_list_id_email"),)
+
+    id = Column(Integer, primary_key=True)
+    list_id = Column(Integer, ForeignKey("lists.id"), nullable=True)
+    email = Column(String, nullable=False)  # lowercased
+    role = Column(String, nullable=False)  # what they get on the list: edit or view
+    invited_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(String, nullable=False, default=INVITE_PENDING)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    decided_at = Column(DateTime, nullable=True)
+
+    list = relationship("ItemList", back_populates="invites")
+    invited_by = relationship("User")
 
 
 class Item(Base):

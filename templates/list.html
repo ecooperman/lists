@@ -58,17 +58,22 @@
         <button type="button" id="reset-priority-labels" class="secondary-btn reset-labels-btn">Reset to defaults</button>
       </div>
       <div class="field">
-        <label for="member-email">Shared with</label>
+        <label for="member-email">Who has access</label>
         <div id="member-list" class="member-list"></div>
+        <div id="invite-list" class="member-list"></div>
         <div class="member-add">
           <input id="member-email" type="email" placeholder="Email address" autocomplete="off" />
           <select id="member-role" aria-label="Access level">
             <option value="view">Can view</option>
             <option value="edit">Can edit</option>
           </select>
-          <button type="button" id="member-add" class="secondary-btn">Share</button>
+          <button type="button" id="member-add" class="secondary-btn">Add</button>
         </div>
-        <span class="field-hint">They see this list the next time they sign in with that email. Viewers can read it; editors can also change its items. Only you can rename, share, lock or delete it.</span>
+        <div id="invite-prompt" class="invite-prompt hidden">
+          <span id="invite-prompt-text"></span>
+          <button type="button" id="invite-request" class="secondary-btn">Request invite</button>
+        </div>
+        <span class="field-hint">Add someone who already uses the app, or ask for a new person to be let in - an administrator approves each request. Viewers can read this list; editors can also change its items. Only you can rename it, change who has access, lock it or delete it.</span>
       </div>
       <div class="field checkbox-field">
         <input id="edit-list-locked" name="locked" type="checkbox" />

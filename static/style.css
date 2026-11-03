@@ -522,7 +522,7 @@
   }
 }
 
-/* --- sharing --- */
+/* --- who has access --- */
 
 .member-list {
   display: flex;
@@ -561,6 +561,62 @@
 .member-add select {
   flex: 0 0 auto;
   width: auto;
+}
+
+.invite-prompt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+/* display: flex above would otherwise beat the shared .hidden (same specificity, later). */
+.invite-prompt.hidden {
+  display: none;
+}
+
+.invite-prompt span {
+  flex: 1 1 220px;
+}
+
+.request-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--muted-bg);
+}
+
+.request-info {
+  flex: 1 1 260px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.request-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* The admin's waiting-requests count on the nav's Invites link: inline after
+   the label on wide screens (the nav's own gap spaces it), and over the icon's
+   corner on the bottom bar so that link isn't taller than the others. */
+.app-nav-link {
+  position: relative;
+}
+
+@media (max-width: 639px) {
+  .nav-count {
+    position: absolute;
+    top: 2px;
+    left: calc(50% + 6px);
+  }
 }
 
 .readonly-value {
