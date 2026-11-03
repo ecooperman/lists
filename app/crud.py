@@ -353,13 +353,18 @@ def get_members(db: Session, list_id: int):
 
 
 def get_account(db: Session, email: str):
-    """The person with this (already normalized) email if they have an account
-    - they've signed in, or an invite for them was approved. Nobody else: you
-    can't add a stranger to a list, only ask for them to be let in (see
-    create_invite)."""
+    """The person with this (already normalized) email if the app has an
+    account for them (they've signed in, or were let in by an approved
+    invite). Not the same as being able to sign in now - see
+    routers/lists.py's _can_sign_in, which also asks Cloudflare."""
     if email == LEGACY_OWNER_EMAIL:
         return None
     return get_user_by_email(db, email)
+
+
+def create_account(db: Session, email: str) -> models.User:
+    """An account for someone Cloudflare lets in who hasn't opened this app yet."""
+    return get_account(db, email) or _create_user(db, email)
 
 
 def add_member(db: Session, list_id: int, user: models.User, role: str):

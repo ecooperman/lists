@@ -168,3 +168,32 @@ def test_all_three_settings_are_needed(configured, monkeypatch, missing):
     monkeypatch.setattr(config, "ENV", "production")
     with pytest.raises(cloudflare.NotConfigured):
         cloudflare.allow_email("new@example.com")
+
+
+# --- asking whether an email is let in --------------------------------------------
+
+
+def test_unconfigured_there_is_nothing_to_ask(monkeypatch):
+    assert cloudflare.is_let_in("anyone@example.com") is None  # and the autouse guard fails any HTTP call
+
+
+def test_membership_of_the_group_decides(group):
+    assert cloudflare.is_let_in("old@example.com") is True
+    group["group"]["include"] = [rule("Mixed@Example.com")]  # Cloudflare keeps whatever case it was given
+    assert cloudflare.is_let_in("mixed@example.com") is True
+    assert cloudflare.is_let_in("stranger@example.com") is False
+    assert {c[0] for c in group["calls"]} == {"get"}  # only ever reads
+
+
+def test_an_administrator_is_always_let_in(group, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_EMAILS", {"boss@example.com"})
+    assert cloudflare.is_let_in("boss@example.com") is True
+    assert group["calls"] == []  # they get in by their own policy, not the group
+
+
+def test_a_group_we_cant_read_is_an_error_not_a_no(configured, monkeypatch):
+    monkeypatch.setattr(
+        requests, "request", lambda *a, **kw: Reply(status=403, errors=[{"code": 10000, "message": "Authentication error"}])
+    )
+    with pytest.raises(cloudflare.CloudflareError):
+        cloudflare.is_let_in("old@example.com")

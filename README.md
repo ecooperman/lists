@@ -41,11 +41,16 @@ time it sees them. `GET /api/me` says who you are.
   that doesn't exist.
 - **Who has access:** the owner manages it from "Edit list" -> "Who has access"
   (`GET/POST /api/lists/{id}/members`, `PATCH/DELETE .../members/{user_id}`).
-  Only someone who already has an account can be added - they've signed in
-  before, or an invite for them was approved. Adding anyone else is a 404
-  ("No one with that email has signed in yet"), which the page turns into an
-  offer to request an invite.
-- **Inviting new people:** the owner asks for a new email to be let in, with a
+  Only someone who can sign in *right now* can be added: Cloudflare is asked
+  (read-only) whether the email is an administrator or in the Invitees group,
+  not whether the app happens to have an account for it - a person removed from
+  the group keeps their account but can't open anything. Anyone else is a 404
+  ("That person can't sign in yet"), which the page turns into an offer to
+  request an invite. Someone in the group who has never opened this app is
+  added directly (their account is made then). If Cloudflare can't be asked it's
+  a 502, and with Cloudflare unconfigured (local development) it falls back to
+  whether they've signed in before.
+- **Inviting people who can't sign in yet:** the owner asks for an email to be let in, with a
   role on that list (`GET/POST /api/lists/{id}/invites`, `DELETE
   .../invites/{invite_id}` to withdraw a waiting one). It sits waiting until an
   administrator (anyone in `ADMIN_EMAILS`) approves it on the **Invites** page

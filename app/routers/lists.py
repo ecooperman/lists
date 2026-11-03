@@ -4,7 +4,7 @@ from typing import List
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import crud, models, notify, schemas
+from .. import cloudflare, crud, models, notify, schemas
 from ..access import check_role, list_access
 from ..auth import current_user, is_admin
 from ..deps import get_db
@@ -20,6 +20,28 @@ EDITOR_FIELDS = {"sort_mode"}
 PERSONAL_FIELDS = {"category_id"}
 
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _valid_email(raw: str) -> str:
+    email = crud.normalize_email(raw)
+    if not _EMAIL.match(email) or email == crud.LEGACY_OWNER_EMAIL:
+        raise HTTPException(status_code=400, detail="That doesn't look like an email address")
+    return email
+
+
+def _can_sign_in(db: Session, email: str) -> bool:
+    """Whether this person can get in right now. Cloudflare decides who passes
+    the login gate, so it's asked rather than inferring it from an account
+    existing - someone removed from the allowed group keeps their account but
+    can't sign in. With Cloudflare unconfigured (local development) all there
+    is to go on is whether they've signed in."""
+    try:
+        let_in = cloudflare.is_let_in(email)
+    except cloudflare.CloudflareError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    if let_in is None:
+        return crud.get_account(db, email) is not None
+    return let_in
 
 
 @router.get("", response_model=List[schemas.ItemList])
@@ -101,15 +123,12 @@ def add_member(
     member: models.ListMember = Depends(list_access(models.ROLE_OWNER)),
     db: Session = Depends(get_db),
 ):
-    """Only people who already have an account can be added; someone new has
-    to be asked for (POST .../invites) and approved first."""
-    email = crud.normalize_email(body.email)
-    if not _EMAIL.match(email):
-        raise HTTPException(status_code=400, detail="That doesn't look like an email address")
-    user = crud.get_account(db, email)
-    if user is None:
-        raise HTTPException(status_code=404, detail="No one with that email has signed in yet")
-    added = crud.add_member(db, member.list_id, user, body.role)
+    """Only people who can already sign in can be added; anyone else has to be
+    asked for (POST .../invites) and approved first."""
+    email = _valid_email(body.email)
+    if not _can_sign_in(db, email):
+        raise HTTPException(status_code=404, detail="That person can't sign in yet")
+    added = crud.add_member(db, member.list_id, crud.create_account(db, email), body.role)
     if added is None:
         raise HTTPException(status_code=409, detail="That person already has access to this list")
     return _member_out(crud.get_member(db, member.list_id, added.user_id))
@@ -169,11 +188,9 @@ def request_invite(
     """Ask for someone with no account to be let in, with a role on this list.
     The administrator is told and decides; the person is added to the list when
     they approve. An administrator's own request is approved straight away."""
-    email = crud.normalize_email(body.email)
-    if not _EMAIL.match(email):
-        raise HTTPException(status_code=400, detail="That doesn't look like an email address")
-    if crud.get_account(db, email) is not None:
-        raise HTTPException(status_code=409, detail="They already have an account - add them to the list instead")
+    email = _valid_email(body.email)
+    if _can_sign_in(db, email):
+        raise HTTPException(status_code=409, detail="They can already sign in - add them to the list instead")
     invite, problem = crud.create_invite(db, member.list_id, user, email, body.role)
     if problem == "duplicate":
         raise HTTPException(status_code=409, detail="You've already asked for that person on this list")

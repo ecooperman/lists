@@ -177,7 +177,8 @@ def test_someone_who_has_never_signed_in_cant_be_added(alice, carol, db):
 def test_the_pre_accounts_placeholder_cant_be_added(alice):
     lst = make_list(alice)
     resp = alice.post(f"/api/lists/{lst['id']}/members", {"email": "legacy-owner@lists.invalid", "role": "view"})
-    assert resp.status_code == 404
+    assert resp.status_code == 400
+    assert alice.post(f"/api/lists/{lst['id']}/invites", {"email": "legacy-owner@lists.invalid", "role": "view"}).status_code == 400
 
 
 def test_emails_are_case_insensitive(alice, client):

@@ -357,8 +357,8 @@ function initSharing() {
     }
     const none = left === 0;
     promptText.textContent = none
-      ? "No one with that email has signed in yet, and you've used all your invites."
-      : "No one with that email has signed in yet. You can ask for them to be let in - an administrator has to approve it." +
+      ? "That person can't sign in yet, and you've used all your invites."
+      : "That person can't sign in yet. You can ask for them to be let in - an administrator has to approve it." +
         (left === null ? "" : ` You have ${left} invite${left === 1 ? "" : "s"} left.`);
     requestBtn.classList.toggle("hidden", none);
     prompt.classList.remove("hidden");

@@ -85,6 +85,85 @@ def test_only_the_owner_can_ask(alice, bob, carol):
     assert carol.get(f"/api/lists/{lst['id']}/invites").status_code == 404
 
 
+# --- who counts as someone who can sign in --------------------------------------
+
+
+@pytest.fixture()
+def let_in(monkeypatch):
+    """Cloudflare is configured: the returned set is who's in its allowed group."""
+    group = set()
+    monkeypatch.setattr(cloudflare, "is_let_in", lambda email: email in group)
+    return group
+
+
+def members_of(person, list_id):
+    return [m["email"] for m in person.get(f"/api/lists/{list_id}/members").json()]
+
+
+def test_an_account_that_cloudflare_wont_let_in_cant_simply_be_added(alice, bob, let_in):
+    lst = make_list(alice)
+    bob.get("/api/me")  # bob has an account...
+    resp = alice.post(f"/api/lists/{lst['id']}/members", {"email": bob.email, "role": "view"})
+    assert resp.status_code == 404  # ...but isn't in the allowed group, so he couldn't open the list
+    assert members_of(alice, lst["id"]) == [alice.email]
+
+    let_in.add(bob.email)
+    assert alice.post(f"/api/lists/{lst['id']}/members", {"email": bob.email, "role": "view"}).status_code == 200
+
+
+def test_someone_in_the_group_who_never_opened_the_app_is_added_directly(alice, sign_in, let_in, db):
+    let_in.add("dana@example.com")  # e.g. put there by hand, or invited for another app
+    lst = make_list(alice)
+    resp = alice.post(f"/api/lists/{lst['id']}/members", {"email": "Dana@Example.com", "role": "edit"})
+    assert resp.status_code == 200
+    assert db.query(models.User).filter_by(email="dana@example.com").count() == 1
+    assert [(l["name"], l["my_role"]) for l in sign_in("dana@example.com").get("/api/lists").json()] == [("Gifts", "edit")]
+
+
+def test_someone_who_can_already_sign_in_is_added_not_invited(alice, let_in):
+    let_in.add("dana@example.com")
+    lst = make_list(alice)
+    assert ask(alice, lst["id"], "dana@example.com").status_code == 409
+
+
+def test_an_account_that_cant_sign_in_can_be_invited_back(alice, bob, admin, let_in, allowed, sent, db):
+    bob.get("/api/me")  # an account, but removed from the group (or never put in it)
+    lst = make_list(alice)
+    resp = ask(alice, lst["id"], bob.email)
+    assert (resp.status_code, resp.json()["status"]) == (200, "pending")
+
+    assert admin.post(f"/api/admin/invites/{resp.json()['id']}/approve").status_code == 200
+    assert allowed == [bob.email]  # approving is what puts him back in the group
+    assert members_of(alice, lst["id"]) == [alice.email, bob.email]
+    assert db.query(models.User).filter_by(email=bob.email).count() == 1
+
+
+def test_the_administrator_can_bring_back_someone_removed_from_the_group(admin, bob, let_in, allowed, sent):
+    bob.get("/api/me")
+    lst = make_list(admin)
+    assert admin.post(f"/api/lists/{lst['id']}/members", {"email": bob.email, "role": "view"}).status_code == 404
+    resp = ask(admin, lst["id"], bob.email, "view")
+    assert (resp.status_code, resp.json()["status"]) == (200, "approved")  # their own request, approved at once
+    assert allowed == [bob.email]
+    assert bob.email in members_of(admin, lst["id"])
+
+
+def test_if_cloudflare_cant_be_asked_nobody_is_added_or_invited(alice, bob, monkeypatch):
+    def down(email):
+        raise cloudflare.CloudflareError("Couldn't reach Cloudflare - try again in a moment")
+
+    monkeypatch.setattr(cloudflare, "is_let_in", down)
+    bob.get("/api/me")
+    lst = make_list(alice)
+    for resp in (
+        alice.post(f"/api/lists/{lst['id']}/members", {"email": bob.email, "role": "view"}),
+        ask(alice, lst["id"], bob.email),
+    ):
+        assert resp.status_code == 502 and "Cloudflare" in resp.json()["detail"]
+    assert members_of(alice, lst["id"]) == [alice.email]
+    assert alice.get(f"/api/lists/{lst['id']}/invites").json() == []
+
+
 # --- how many each person may ask for ---------------------------------------------
 
 

@@ -70,6 +70,24 @@ def _emails(rules) -> set:
     }
 
 
+def _group_url() -> str:
+    return f"{API}/accounts/{config.CF_ACCOUNT_ID}/access/groups/{config.CF_INVITEES_GROUP_ID}"
+
+
+def is_let_in(email: str):
+    """Whether Cloudflare currently lets this email through the login gate:
+    True for an administrator (they get in by their own policy) or anyone in
+    the Invitees group, False for everyone else. None when there's nothing to
+    ask because Cloudflare isn't configured (local development, or before it's
+    set up) - the caller goes by what it knows itself. Read-only. Raises
+    CloudflareError if Cloudflare can't be asked."""
+    if not configured():
+        return None
+    if email in config.ADMIN_EMAILS:
+        return True
+    return email in _emails(_call("get", _group_url()).get("include"))
+
+
 def allow_email(email: str) -> None:
     """Make sure `email` is in the Invitees group. Already being there is fine.
     Raises NotConfigured (production only), SeatCapReached or CloudflareError."""
@@ -80,7 +98,7 @@ def allow_email(email: str) -> None:
         log.info("Cloudflare isn't configured; not adding %s to the allowed group (local mode)", email)
         return
 
-    url = f"{API}/accounts/{config.CF_ACCOUNT_ID}/access/groups/{config.CF_INVITEES_GROUP_ID}"
+    url = _group_url()
     with _lock:
         group = _call("get", url)
         include = group.get("include") or []
