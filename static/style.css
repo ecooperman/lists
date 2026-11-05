@@ -535,15 +535,25 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .member-email {
-  flex: 1;
+  /* Wide enough to read an address; on a phone the controls wrap below it. */
+  flex: 1 1 220px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 14px;
+}
+
+/* The shared theme makes selects and buttons fill their row; here they must
+   keep their natural size or they squeeze the email down to nothing. */
+.member-row select,
+.member-row button {
+  flex: 0 0 auto;
+  width: auto;
 }
 
 .member-add {
