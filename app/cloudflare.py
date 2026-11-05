@@ -58,7 +58,7 @@ def _call(method: str, url: str, **kwargs) -> dict:
         errors = body.get("errors") or []
         message = errors[0].get("message") if errors and isinstance(errors[0], dict) else None
         log.warning("Cloudflare API refused (%s): %s", resp.status_code, message)
-        raise CloudflareError(f"Cloudflare refused the change: {message or resp.status_code}")
+        raise CloudflareError(f"Cloudflare refused the request: {message or resp.status_code}")
     return body["result"]
 
 

@@ -4,7 +4,7 @@ from typing import List
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import cloudflare, crud, models, notify, schemas
+from .. import cloudflare, config, crud, models, notify, schemas
 from ..access import check_role, list_access
 from ..auth import current_user, is_admin
 from ..deps import get_db
@@ -126,11 +126,24 @@ def add_member(
     """Only people who can already sign in can be added; anyone else has to be
     asked for (POST .../invites) and approved first."""
     email = _valid_email(body.email)
+    # Already on the list? Say so first - it's the likeliest slip (typing your
+    # own address) and Cloudflare has nothing to do with it.
+    existing = crud.get_account(db, email)
+    on_list = crud.get_member(db, member.list_id, existing.id) if existing else None
+    if on_list is not None:
+        if on_list.role == models.ROLE_OWNER:
+            who = "That's you" if email == member.user.email else f"{email} owns this list"
+            raise HTTPException(status_code=409, detail=f"{who} - the owner already has full access.")
+        raise HTTPException(
+            status_code=409,
+            detail=f"{email} is already on this list and can {on_list.role}. "
+            "To change that, use the dropdown beside their name.",
+        )
     if not _can_sign_in(db, email):
         raise HTTPException(status_code=404, detail="That person can't sign in yet")
     added = crud.add_member(db, member.list_id, crud.create_account(db, email), body.role)
-    if added is None:
-        raise HTTPException(status_code=409, detail="That person already has access to this list")
+    if added is None:  # added by someone else a moment ago
+        raise HTTPException(status_code=409, detail=f"{email} is already on this list.")
     return _member_out(crud.get_member(db, member.list_id, added.user_id))
 
 
@@ -190,12 +203,23 @@ def request_invite(
     they approve. An administrator's own request is approved straight away."""
     email = _valid_email(body.email)
     if _can_sign_in(db, email):
-        raise HTTPException(status_code=409, detail="They can already sign in - add them to the list instead")
+        raise HTTPException(
+            status_code=409,
+            detail=f"{email} can already sign in, so there's nothing to request - use Add to put them on the list.",
+        )
     invite, problem = crud.create_invite(db, member.list_id, user, email, body.role)
     if problem == "duplicate":
-        raise HTTPException(status_code=409, detail="You've already asked for that person on this list")
+        earlier = crud.get_list_invite(db, member.list_id, email)
+        if earlier is not None and earlier.status == models.INVITE_DECLINED:
+            detail = f"Your request for {email} was declined. Only the administrator can let them in now."
+        else:
+            detail = f"You've already asked for {email} on this list - it's waiting for the administrator to approve."
+        raise HTTPException(status_code=409, detail=detail)
     if problem == "none_left":
-        raise HTTPException(status_code=403, detail="You've used all your invites")
+        raise HTTPException(
+            status_code=403,
+            detail=f"You've used all {config.INVITES_PER_USER} of your invites. Only the administrator can raise the limit.",
+        )
     if is_admin(user):
         return approve(db, invite)
     background.add_task(notify.invite_requested, user.email, invite.email, invite.role)

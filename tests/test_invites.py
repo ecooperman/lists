@@ -346,3 +346,27 @@ def test_deleting_a_list_drops_its_waiting_requests_but_not_approved_ones(alice,
     other = make_list(alice, "Other")
     assert ask(alice, other["id"], "c@example.com").status_code == 200
     assert ask(alice, other["id"], "d@example.com").status_code == 403
+
+
+def test_refusals_name_the_person_and_say_what_to_do(alice, admin, monkeypatch, allowed, sent, let_in):
+    monkeypatch.setattr(config, "INVITES_PER_USER", 2)
+    lst = make_list(alice)
+
+    waiting = ask(alice, lst["id"], "a@example.com")
+    assert waiting.status_code == 200
+    repeat = ask(alice, lst["id"], "a@example.com")
+    assert repeat.status_code == 409
+    assert "a@example.com" in repeat.json()["detail"] and "waiting" in repeat.json()["detail"]
+
+    assert admin.post(f"/api/admin/invites/{waiting.json()['id']}/decline").status_code == 200
+    declined = ask(alice, lst["id"], "a@example.com")
+    assert "declined" in declined.json()["detail"]
+
+    let_in.add("dana@example.com")
+    signs_in = ask(alice, lst["id"], "dana@example.com")
+    assert "dana@example.com" in signs_in.json()["detail"] and "Add" in signs_in.json()["detail"]
+
+    assert ask(alice, lst["id"], "b@example.com").status_code == 200
+    none_left = ask(alice, lst["id"], "c@example.com")
+    assert none_left.status_code == 403
+    assert "2" in none_left.json()["detail"]

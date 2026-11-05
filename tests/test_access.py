@@ -318,3 +318,30 @@ def test_the_first_admin_to_sign_in_takes_over_pre_accounts_data(client, db, bob
     assert [(l["name"], l["my_role"]) for l in owner.get("/api/lists").json()] == [("Old list", "owner")]
     assert owner.get("/api/me").json()["email"] == config.DEV_USER_EMAIL
     assert db.query(models.User).filter_by(email=crud.LEGACY_OWNER_EMAIL).first() is None
+
+
+def test_adding_someone_already_on_the_list_says_so(alice, bob):
+    lst = make_list(alice)
+    share(alice, lst["id"], bob, "edit")
+
+    # Typing your own address is the likeliest slip - and it isn't about Cloudflare at all.
+    mine = alice.post(f"/api/lists/{lst['id']}/members", {"email": alice.email, "role": "view"})
+    assert mine.status_code == 409
+    assert "That's you" in mine.json()["detail"]
+
+    again = alice.post(f"/api/lists/{lst['id']}/members", {"email": bob.email.upper(), "role": "view"})
+    assert again.status_code == 409
+    detail = again.json()["detail"]
+    assert bob.email in detail and "already on this list" in detail and "can edit" in detail
+
+
+def test_someone_on_the_list_is_reported_even_if_cloudflare_no_longer_lets_them_in(alice, bob, monkeypatch):
+    from app import cloudflare
+
+    lst = make_list(alice)
+    share(alice, lst["id"], bob, "view")
+    monkeypatch.setattr(cloudflare, "is_let_in", lambda email: False)
+    resp = alice.post(f"/api/lists/{lst['id']}/members", {"email": bob.email, "role": "edit"})
+    # Not "can't sign in yet", which would offer to invite someone already here.
+    assert resp.status_code == 409
+    assert "already on this list" in resp.json()["detail"]

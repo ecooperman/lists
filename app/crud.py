@@ -443,6 +443,11 @@ def create_invite(db: Session, list_id: int, inviter: models.User, email: str, r
     return invite, None
 
 
+def get_list_invite(db: Session, list_id: int, email: str):
+    """The request already made for this email on this list, in any state."""
+    return db.query(models.Invite).filter_by(list_id=list_id, email=email).first()
+
+
 def get_invite(db: Session, invite_id: int):
     return (
         db.query(models.Invite)

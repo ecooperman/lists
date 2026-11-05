@@ -345,6 +345,16 @@ function initSharing() {
 
   function hidePrompt() {
     prompt.classList.add("hidden");
+    prompt.classList.remove("is-error");
+  }
+
+  // Say why an add or a request didn't go through, right under the box being
+  // typed in (the page-wide message sits at the top, out of sight down here).
+  function showProblem(text) {
+    promptText.textContent = text;
+    requestBtn.classList.add("hidden");
+    prompt.classList.add("is-error");
+    prompt.classList.remove("hidden");
   }
 
   // The box held someone with no account: say so, and offer to ask for them.
@@ -361,6 +371,7 @@ function initSharing() {
       : "That person can't sign in yet. You can ask for them to be let in - an administrator has to approve it." +
         (left === null ? "" : ` You have ${left} invite${left === 1 ? "" : "s"} left.`);
     requestBtn.classList.toggle("hidden", none);
+    prompt.classList.remove("is-error");
     prompt.classList.remove("hidden");
   }
 
@@ -378,7 +389,7 @@ function initSharing() {
         body: JSON.stringify({ email, role: roleSelect.value }),
       });
     } catch (err) {
-      Global.showMessage("Couldn't reach the server.", "error");
+      showProblem("Couldn't reach the server - check your connection and try again.");
       return;
     }
     if (res.ok) {
@@ -389,7 +400,7 @@ function initSharing() {
       offerInvite();
     } else {
       const body = await res.json().catch(() => ({}));
-      Global.showMessage(typeof body.detail === "string" ? body.detail : "Couldn't add them.", "error");
+      showProblem(typeof body.detail === "string" ? body.detail : Global.friendlyStatus(res.status));
     }
   }
 
@@ -405,7 +416,7 @@ function initSharing() {
         "success"
       );
     } catch (err) {
-      Global.showMessage(err.message, "error");
+      showProblem(err.message);
       return;
     }
     emailInput.value = "";
