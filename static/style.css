@@ -138,11 +138,6 @@
   font-size: 14px;
 }
 
-.preview-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
 /* --- priority + ordering --- */
 
 .item-badge-priority {
@@ -657,3 +652,109 @@
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+
+/* --- list rows on the index: the whole row opens the list --- */
+
+.list-row {
+  position: relative;
+  cursor: pointer;
+  border-radius: inherit;
+}
+
+.list-row:hover {
+  background-color: rgba(0, 0, 0, 0.025);
+}
+
+/* Transparent link stretched over the row. Everything with its own job sits
+   above it (z-index) so those clicks never reach the link. */
+.list-row-link {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.list-row-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.list-row .list-drag-handle,
+.list-row .summary-title-edit,
+.list-row .summary-purpose-edit,
+.list-row .list-chevron-btn {
+  position: relative;
+  z-index: 1;
+}
+
+.list-summary-badges {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+/* The expand arrow: a full-height strip at the right edge (the theme gives
+   .item-summary 14px 16px padding) so it's an easy target now that it is the
+   only thing that expands the card. */
+.list-chevron-btn {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  flex-shrink: 0;
+  margin: -14px -16px -14px 0;
+  padding: 14px 16px 14px 10px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.list-chevron-btn:hover .item-chevron {
+  color: var(--accent);
+}
+
+.list-chevron-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* While either the name or the description is being edited, the text block
+   takes the row's free space (it is otherwise only as wide as its content). */
+.list-summary-text.inline:has(.inline-edit.editing) {
+  flex: 1 1 auto;
+}
+
+.list-summary-text.inline:has(.inline-edit.editing) + .summary-spacer {
+  flex: 0 0 0;
+  min-width: 0;
+}
+
+/* The description edits in place like the name does (mouse devices). */
+.summary-purpose-edit {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.summary-purpose-edit.editing {
+  flex: 1 1 auto;
+  align-self: stretch;
+}
+
+.summary-purpose-edit .inline-edit-display {
+  min-height: 0;
+  padding: 1px 6px;
+  margin: -1px -6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 4px;
+}
+
+.summary-purpose-edit .inline-edit-input {
+  font-size: 13px;
+  padding: 4px 6px;
+}
+

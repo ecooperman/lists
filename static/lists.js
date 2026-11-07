@@ -276,13 +276,21 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
     Global.el("div", { class: "item-details-inner" }, [categoryRow, shareRow, preview]),
   ]);
 
-  // Mouse devices: the name is click-to-edit in the header, and only the
-  // right-hand zone (badges + chevron) expands the card - same layout as the
-  // item rows on the list page. Touch: the whole row is the toggle button.
+  // The whole row opens the list: a transparent link stretched over it, so
+  // keyboard focus, middle/cmd-click and "open in new tab" all work natively.
+  // Three things sit above that link and keep their own jobs: the drag handle,
+  // the arrow (the only thing that expands the card) and - on mouse devices -
+  // the name and description, which edit in place when clicked. On touch
+  // devices those two are plain text (rename and describe in "Edit list").
   const inlineHeader = typeof Global.inlineEdit === "function" && Global.supportsInlineEdit();
-  const summary = inlineHeader
-    ? Global.el("div", { class: "item-summary inline-header" })
-    : Global.el("button", { type: "button", class: "item-summary", "aria-expanded": "false" });
+  const summary = Global.el("div", { class: "item-summary list-row" + (inlineHeader ? " inline-header" : "") });
+  const rowLink = Global.el("a", {
+    class: "list-row-link",
+    href: `list.html?id=${itemList.id}`,
+    "aria-label": `Open "${itemList.name}"`,
+    draggable: "false",
+  });
+  summary.appendChild(rowLink);
 
   // The list's own drag handle (a different class from the item handles
   // inside the expanded preview, so the two sortables never grab each other).
@@ -290,8 +298,16 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
   handle.addEventListener("click", (e) => e.stopPropagation());
   summary.appendChild(handle);
 
-  const purpose = itemList.purpose ? Global.el("span", { class: "list-summary-purpose", text: itemList.purpose }) : null;
-  let right = summary;
+  // keepalive: an edit saves when you click away, and clicking away onto the
+  // row follows its link - the request must finish even as the page leaves.
+  const patchList = (fields) =>
+    Global.fetchJSON(`/api/lists/${itemList.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+      keepalive: true,
+    });
+
   if (inlineHeader) {
     summary.appendChild(
       Global.el("span", { class: "list-summary-text inline" }, [
@@ -302,59 +318,73 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
           requiredMessage: "A list needs a name.",
           className: "item-summary-title summary-title-edit",
           async onSave(raw) {
-            const updated = await Global.fetchJSON(`/api/lists/${itemList.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ name: raw }),
-            });
+            const updated = await patchList({ name: raw });
             itemList.name = updated.name;
+            rowLink.setAttribute("aria-label", `Open "${updated.name}"`);
             return updated.name;
           },
         }),
-        purpose,
+        // Multi-line like the Edit form's box: Enter adds a line, Ctrl/Cmd+Enter
+        // or clicking away saves. Empty saves as no description.
+        Global.inlineEdit({
+          type: "textarea",
+          rows: 2,
+          value: itemList.purpose || "",
+          placeholder: "Add a description",
+          className: "summary-purpose-edit",
+          async onSave(raw) {
+            const updated = await patchList({ purpose: raw || null });
+            itemList.purpose = updated.purpose;
+            return updated.purpose || "";
+          },
+        }),
       ])
     );
     summary.appendChild(Global.el("span", { class: "summary-spacer" }));
-    right = Global.el("div", { class: "item-summary-zone", role: "button", tabindex: "0", "aria-label": "Expand or collapse", "aria-expanded": "false" });
-    summary.appendChild(right);
   } else {
+    const purpose = itemList.purpose ? Global.el("span", { class: "list-summary-purpose", text: itemList.purpose }) : null;
     summary.appendChild(
       Global.el("span", { class: "list-summary-text" }, [Global.el("span", { class: "item-summary-title", text: itemList.name }), purpose])
     );
   }
 
+  const badges = Global.el("div", { class: "list-summary-badges" });
+  summary.appendChild(badges);
+
   // In the grouped view the heading already says which category this is.
   const slot = Global.el("span", { class: "category-slot" });
   if (showPill) {
-    right.appendChild(slot);
+    badges.appendChild(slot);
     setCategoryPill(slot, itemList);
   }
 
   if (itemList.locked) {
-    right.appendChild(Global.el("span", { class: "item-badge item-badge-muted", text: "Locked" }));
+    badges.appendChild(Global.el("span", { class: "item-badge item-badge-muted", text: "Locked" }));
   }
 
   const accessSlot = Global.el("span", { class: "access-slot" });
-  right.appendChild(accessSlot);
+  badges.appendChild(accessSlot);
   setAccessBadge(accessSlot, itemList);
 
   const countBadge = Global.el("span", { class: "item-badge item-badge-accent" });
   setCountBadge(countBadge, itemList);
-  right.appendChild(countBadge);
-  right.appendChild(Global.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
+  badges.appendChild(countBadge);
 
-  // `right` is what toggles the card: the zone on mouse devices, the whole
-  // row on touch.
-  Global.wireAccordionToggle(card, right, details);
-  // Fetch the items each time the card opens, so it's never stale after
-  // coming back from editing the list (handlers run in registration order,
-  // so by here the toggle has already run).
-  right.addEventListener("click", () => {
-    if (card.classList.contains("expanded")) loadPreview(itemList, preview);
+  // The arrow is the only thing that expands the card.
+  const toggleBtn = Global.el(
+    "button",
+    { type: "button", class: "list-chevron-btn", "aria-label": "Show or hide this list's items", "aria-expanded": "false" },
+    [Global.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" })]
+  );
+  toggleBtn.addEventListener("click", () => {
+    const isExpanded = card.classList.toggle("expanded");
+    details.classList.toggle("hidden", !isExpanded);
+    toggleBtn.setAttribute("aria-expanded", String(isExpanded));
+    // Fetch the items each time the card opens, so it's never stale after
+    // coming back from editing the list.
+    if (isExpanded) loadPreview(itemList, preview);
   });
-  right.addEventListener("keydown", (e) => {
-    if ((e.key === "Enter" || e.key === " ") && card.classList.contains("expanded")) loadPreview(itemList, preview);
-  });
+  summary.appendChild(toggleBtn);
 
   card.append(summary, details);
   listViews.set(itemList.id, { card, countBadge, reloadPreview: () => loadPreview(itemList, preview) });
@@ -362,7 +392,7 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
   if (expanded) {
     card.classList.add("expanded");
     details.classList.remove("hidden");
-    right.setAttribute("aria-expanded", "true");
+    toggleBtn.setAttribute("aria-expanded", "true");
     loadPreview(itemList, preview);
   }
   return card;
@@ -472,11 +502,6 @@ async function loadPreview(itemList, preview) {
     if (manual && ctx.canEdit) initPreviewSortable(itemList, preview, stack);
   }
 
-  preview.appendChild(
-    Global.el("div", { class: "preview-actions" }, [
-      Global.el("a", { href: `list.html?id=${itemList.id}`, class: "secondary-btn", text: "Open list →" }),
-    ])
-  );
 }
 
 // Same drag rules as the list page (list.js initSortable): handle-only, done

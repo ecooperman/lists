@@ -297,10 +297,11 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
 ## Notes
 
 - Pages: `/` is the lists index (each list with how many items are left; click
-  one to expand its items, which are the same cards as on the list's own page:
-  rename, check off, edit any field, delete or (in manual order) drag them into
-  a new order right there - with an "Open list" link for adding or importing
-  items and the list's settings),
+  a row to open the list, or its arrow to expand its items in place - the same
+  cards as on the list's own page: rename, check off, edit any field, delete or
+  (in manual order) drag them into a new order right there; on a mouse the
+  list's name and description edit in place too. Adding or importing items and
+  the list's settings are on its own page),
   `/list.html?id=N` is one list's items (the same `page.html?id=N` pattern
   trip-planning uses), `/contacts.html` manages contacts and
   `/categories.html` manages categories. Editing,
