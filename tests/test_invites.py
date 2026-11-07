@@ -370,3 +370,78 @@ def test_refusals_name_the_person_and_say_what_to_do(alice, admin, monkeypatch, 
     none_left = ask(alice, lst["id"], "c@example.com")
     assert none_left.status_code == 403
     assert "2" in none_left.json()["detail"]
+
+
+# --- telling the person who was let in ----------------------------------------
+
+
+@pytest.fixture()
+def emails(monkeypatch):
+    """Stand-in for the SMTP server: what each person would be emailed."""
+    mails = []
+    monkeypatch.setattr(notify, "send_email", lambda to, subject, body: mails.append((to, subject, body)) or True)
+    return mails
+
+
+def test_approving_emails_the_new_person_with_how_to_sign_in(alice, admin, allowed, sent, emails):
+    lst = make_list(alice, "Gifts")
+    invite = ask(alice, lst["id"], NEWBIE, role="edit").json()
+    assert emails == []  # nothing until the administrator decides
+
+    assert admin.post(f"/api/admin/invites/{invite['id']}/approve").status_code == 200
+    assert len(emails) == 1
+    to, subject, body = emails[0]
+    assert to == NEWBIE
+    assert alice.email in subject and "Gifts" in subject
+    assert "you can edit it" in body
+    assert f"{config.PUBLIC_URL}/list.html?id={lst['id']}" in body
+    assert "one-time PIN" in body  # they've never signed in here
+
+
+def test_an_administrators_own_request_also_emails_the_person(admin, allowed, emails):
+    lst = make_list(admin)
+    assert ask(admin, lst["id"], NEWBIE).status_code == 200
+    assert [to for to, _, _ in emails] == [NEWBIE]
+
+
+def test_declining_emails_nobody(alice, admin, allowed, sent, emails):
+    lst = make_list(alice)
+    invite = ask(alice, lst["id"]).json()
+    assert admin.post(f"/api/admin/invites/{invite['id']}/decline").status_code == 200
+    assert emails == []
+
+
+def test_adding_someone_who_has_signed_in_emails_them_without_the_pin_text(alice, bob, emails):
+    lst = make_list(alice)
+    share(alice, lst["id"], bob, "view")
+    assert [to for to, _, _ in emails] == [bob.email]
+    body = emails[0][2]
+    assert "you can view it" in body and f"list.html?id={lst['id']}" in body
+    assert "one-time PIN" not in body
+
+
+def test_adding_someone_let_in_who_never_opened_the_app_explains_signing_in(alice, let_in, emails):
+    let_in.add("dana@example.com")
+    lst = make_list(alice)
+    assert alice.post(f"/api/lists/{lst['id']}/members", {"email": "dana@example.com", "role": "edit"}).status_code == 200
+    assert "one-time PIN" in emails[0][2]
+
+
+def test_a_refused_add_sends_no_email(alice, emails):
+    lst = make_list(alice)
+    assert alice.post(f"/api/lists/{lst['id']}/members", {"email": alice.email, "role": "view"}).status_code == 409
+    assert emails == []
+
+
+def test_a_failing_email_doesnt_undo_the_approval(alice, admin, allowed, sent, monkeypatch, caplog):
+    def broken(to, subject, body):
+        raise OSError("smtp.example.com refused user=secret-user password=hunter2")
+
+    monkeypatch.setattr(notify, "send_email", broken)
+    lst = make_list(alice)
+    invite = ask(alice, lst["id"]).json()
+    with caplog.at_level("WARNING"):
+        resp = admin.post(f"/api/admin/invites/{invite['id']}/approve")
+    assert resp.status_code == 200 and resp.json()["status"] == "approved"
+    assert allowed == [NEWBIE]
+    assert "OSError" in caplog.text and "hunter2" not in caplog.text and "secret-user" not in caplog.text

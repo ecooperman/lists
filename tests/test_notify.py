@@ -147,3 +147,36 @@ def test_a_broken_channel_doesnt_stop_the_others_or_leak_its_secrets(posts, smtp
     assert len(smtp.instances) == 1  # email still went out after both push channels failed
     assert "ntfy" in caplog.text and "pushover" in caplog.text
     assert "app-token-secret" not in caplog.text and "ntfy.sh/t" not in caplog.text
+
+
+# --- email to a person (not the administrator) ---------------------------------
+
+
+def _configure_smtp(monkeypatch, port=587):
+    for name, value in (("SMTP_HOST", "smtp.example.com"), ("SMTP_PORT", port), ("SMTP_USERNAME", "u"), ("SMTP_PASSWORD", "p"), ("SMTP_FROM", "Lists <lists@example.com>")):
+        monkeypatch.setattr(config, name, value)
+
+
+def test_send_email_without_a_server_does_nothing(smtp):
+    assert notify.send_email("x@example.com", "hi", "body") is False
+    assert smtp.instances == []
+
+
+def test_send_email_goes_to_the_given_person_not_the_administrator(smtp, monkeypatch):
+    _configure_smtp(monkeypatch)
+    monkeypatch.setattr(config, "NOTIFY_EMAIL", "admin@example.com")
+    assert notify.send_email("friend@example.com", "Subject", "Body") is True
+    msg = smtp.instances[0].log[-1][1]
+    assert msg["To"] == "friend@example.com" and msg["From"] == "Lists <lists@example.com>"
+
+
+def test_the_subject_is_one_line_even_if_a_list_name_is_not(smtp, monkeypatch):
+    _configure_smtp(monkeypatch)
+    notify.send_email("a@example.com", 'shared "Line one\nBcc: evil@example.com"', "body")
+    msg = smtp.instances[0].log[-1][1]
+    assert "\n" not in msg["Subject"] and msg["Bcc"] is None
+
+
+def test_tell_given_access_does_nothing_without_a_server_and_never_raises(smtp):
+    notify.tell_given_access("a@example.com", "b@example.com", "Gifts", 1, "view", True)
+    assert smtp.instances == []

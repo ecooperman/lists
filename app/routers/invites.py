@@ -1,9 +1,9 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import cloudflare, crud, models, schemas
+from .. import cloudflare, crud, models, notify, schemas
 from ..auth import require_admin
 from ..deps import get_db
 
@@ -13,10 +13,11 @@ from ..deps import get_db
 router = APIRouter(prefix="/api/admin/invites", tags=["invites"])
 
 
-def approve(db: Session, invite: models.Invite) -> models.Invite:
+def approve(db: Session, invite: models.Invite, background: BackgroundTasks) -> models.Invite:
     """Let the person through Cloudflare's login gate, then put them on the
-    list. The Cloudflare step goes first: if it fails the request stays
-    waiting, so nobody is recorded as let in who still can't sign in."""
+    list, then tell them by email. The Cloudflare step goes first: if it fails
+    the request stays waiting, so nobody is recorded as let in who still can't
+    sign in."""
     try:
         cloudflare.allow_email(invite.email)
     except cloudflare.NotConfigured as exc:
@@ -25,7 +26,19 @@ def approve(db: Session, invite: models.Invite) -> models.Invite:
         raise HTTPException(status_code=409, detail=str(exc))
     except cloudflare.CloudflareError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
-    return crud.grant_invite(db, invite)
+    granted = crud.grant_invite(db, invite)
+    # Plain values, not the ORM objects: this runs after the response, when the
+    # request's session is closed.
+    background.add_task(
+        notify.tell_given_access,
+        granted.email,
+        granted.invited_by.email,
+        granted.list.name if granted.list is not None else "a list",
+        granted.list_id,
+        granted.role,
+        True,
+    )
+    return granted
 
 
 def _waiting_invite(db: Session, invite_id: int) -> models.Invite:
@@ -43,8 +56,13 @@ def list_waiting(admin: models.User = Depends(require_admin), db: Session = Depe
 
 
 @router.post("/{invite_id}/approve", response_model=schemas.AdminInvite)
-def approve_invite(invite_id: int, admin: models.User = Depends(require_admin), db: Session = Depends(get_db)):
-    invite = approve(db, _waiting_invite(db, invite_id))
+def approve_invite(
+    invite_id: int,
+    background: BackgroundTasks,
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    invite = approve(db, _waiting_invite(db, invite_id), background)
     invite.invited_by_email = invite.invited_by.email
     invite.list_name = invite.list.name if invite.list is not None else None
     return invite

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 import requests
+import smtplib
 
 ROOT = Path(__file__).resolve().parent.parent
 _db_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -69,6 +70,8 @@ def _nothing_leaves_the_machine(monkeypatch):
 
     monkeypatch.setattr(requests, "request", refuse)
     monkeypatch.setattr(requests, "post", refuse)
+    monkeypatch.setattr(smtplib, "SMTP", refuse)
+    monkeypatch.setattr(smtplib, "SMTP_SSL", refuse)
 
 
 class Person:

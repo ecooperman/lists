@@ -120,6 +120,7 @@ def list_members(member: models.ListMember = Depends(list_access(models.ROLE_OWN
 @router.post("/{list_id}/members", response_model=schemas.Member)
 def add_member(
     body: schemas.MemberAdd,
+    background: BackgroundTasks,
     member: models.ListMember = Depends(list_access(models.ROLE_OWNER)),
     db: Session = Depends(get_db),
 ):
@@ -144,6 +145,11 @@ def add_member(
     added = crud.add_member(db, member.list_id, crud.create_account(db, email), body.role)
     if added is None:  # added by someone else a moment ago
         raise HTTPException(status_code=409, detail=f"{email} is already on this list.")
+    # Tell them (by email, if it's set up). Someone with no account yet has
+    # never opened the app, so say how signing in works.
+    background.add_task(
+        notify.tell_given_access, email, member.user.email, member.list.name, member.list_id, body.role, existing is None
+    )
     return _member_out(crud.get_member(db, member.list_id, added.user_id))
 
 
@@ -221,7 +227,7 @@ def request_invite(
             detail=f"You've used all {config.INVITES_PER_USER} of your invites. Only the administrator can raise the limit.",
         )
     if is_admin(user):
-        return approve(db, invite)
+        return approve(db, invite, background)
     background.add_task(notify.invite_requested, user.email, invite.email, invite.role)
     return invite
 

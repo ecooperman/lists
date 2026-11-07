@@ -73,6 +73,14 @@ time it sees them. `GET /api/me` says who you are.
   - The administrator is told about each new request over whichever channels
     are configured (`app/notify.py`): ntfy, Pushover and email, any combination.
     A channel that fails never fails the request.
+  - The *person* is told too, by email only (they may never have used the app,
+    so push isn't an option): when their invite is approved, and when an owner
+    adds someone who already has an account. The message says who gave them
+    access, to which list, with a link - and, for someone who hasn't signed in
+    here before, that Cloudflare will email them a one-time PIN. It needs only
+    `SMTP_HOST` + `SMTP_FROM` and is skipped silently without them; a failed
+    send is logged (type only) and never undoes the approval. A declined
+    request sends nothing.
   - Settings, all in `/etc/personal-apps/shared.env` (see `DEPLOYMENT.md`):
     `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `CF_INVITEES_GROUP_ID`, `INVITES_PER_USER`,
     `ACCESS_SEAT_CAP`; `NTFY_TOPIC` (+ `NTFY_SERVER`, `NTFY_TOKEN`);

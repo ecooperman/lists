@@ -36,14 +36,23 @@ def _pushover(title: str, message: str, link: Optional[str]) -> None:
     requests.post("https://api.pushover.net/1/messages.json", data=data, timeout=TIMEOUT).raise_for_status()
 
 
-def _email(title: str, message: str, link: Optional[str]) -> None:
-    if not (config.SMTP_HOST and config.SMTP_FROM and config.NOTIFY_EMAIL):
-        return
+def _one_line(text: str) -> str:
+    """Header text must be one line: a newline in a list name would otherwise
+    be refused (or worse, start a new header)."""
+    return " ".join(str(text).split())
+
+
+def send_email(to: str, subject: str, body: str) -> bool:
+    """One plain-text email through the configured SMTP server. Does nothing
+    (and says so) without one. Raises on a failed send - callers that must not
+    fail wrap it (see notify() and tell_given_access())."""
+    if not (config.SMTP_HOST and config.SMTP_FROM):
+        return False
     msg = EmailMessage()
-    msg["Subject"] = title
+    msg["Subject"] = _one_line(subject)
     msg["From"] = config.SMTP_FROM
-    msg["To"] = config.NOTIFY_EMAIL
-    msg.set_content(f"{message}\n\n{link}" if link else message)
+    msg["To"] = to
+    msg.set_content(body)
     if config.SMTP_PORT == 465:
         server = smtplib.SMTP_SSL(config.SMTP_HOST, config.SMTP_PORT, timeout=TIMEOUT)
     else:
@@ -54,6 +63,13 @@ def _email(title: str, message: str, link: Optional[str]) -> None:
         if config.SMTP_USERNAME:
             server.login(config.SMTP_USERNAME, config.SMTP_PASSWORD or "")
         server.send_message(msg)
+    return True
+
+
+def _email(title: str, message: str, link: Optional[str]) -> None:
+    """The administrator's email channel."""
+    if config.NOTIFY_EMAIL:
+        send_email(config.NOTIFY_EMAIL, title, f"{message}\n\n{link}" if link else message)
 
 
 CHANNELS = {"ntfy": _ntfy, "pushover": _pushover, "email": _email}
@@ -75,3 +91,28 @@ def invite_requested(inviter_email: str, invitee_email: str, role: str) -> None:
         f"{inviter_email} wants to let {invitee_email} in (can {access}).",
         f"{config.PUBLIC_URL}/invites.html",
     )
+
+
+def tell_given_access(
+    to: str, inviter_email: str, list_name: str, list_id: Optional[int], role: str, new_person: bool
+) -> None:
+    """Tell someone they've been given access to a list - by email only, since
+    they may never have used the app and can't be expected to have anything set
+    up for push. `new_person`: they haven't signed in here before, so say how
+    (Cloudflare emails them a one-time PIN). Best effort, like notify(): a
+    failure is logged (type only) and never reaches the caller."""
+    can = "edit" if role == "edit" else "view"
+    lines = [f'{inviter_email} gave you access to the list "{list_name}" in Lists - you can {can} it.']
+    if list_id is not None:
+        lines += ["", f"Open it here: {config.PUBLIC_URL}/list.html?id={list_id}"]
+    if new_person:
+        lines += [
+            "",
+            "The first time you open it you'll be asked to sign in. Enter this email address "
+            "and a one-time PIN will be sent to it - there is no password to set up.",
+        ]
+    try:
+        send_email(to, f'{inviter_email} shared "{list_name}" with you', "\n".join(lines))
+    except Exception as exc:  # noqa: BLE001 - never fail the approval or the add that triggered this
+        log.warning("Telling the new person by email failed: %s", type(exc).__name__)
+
