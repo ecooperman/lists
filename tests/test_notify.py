@@ -180,3 +180,35 @@ def test_the_subject_is_one_line_even_if_a_list_name_is_not(smtp, monkeypatch):
 def test_tell_given_access_does_nothing_without_a_server_and_never_raises(smtp):
     notify.tell_given_access("a@example.com", "b@example.com", "Gifts", 1, "view", True)
     assert smtp.instances == []
+
+
+def test_an_smtp_refusal_is_logged_with_the_servers_reason_but_other_errors_stay_type_only(monkeypatch, caplog):
+    _configure_smtp(monkeypatch)
+
+    class Refusing:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def starttls(self):
+            pass
+
+        def login(self, user, password):
+            pass
+
+        def send_message(self, msg):
+            raise smtplib.SMTPDataError(550, b"The evancooperman.com domain is not verified.")
+
+    monkeypatch.setattr(smtplib, "SMTP", Refusing)
+    with caplog.at_level("WARNING"):
+        notify.tell_given_access("a@example.com", "b@example.com", "Gifts", 1, "view", False)
+    assert "SMTPDataError 550 The evancooperman.com domain is not verified." in caplog.text
+
+    # Anything that isn't an SMTP reply still logs only its type: its message could carry a secret.
+    caplog.clear()
+    assert notify.describe_failure(OSError("connect to smtp.example.com as user=u password=hunter2")) == "OSError"

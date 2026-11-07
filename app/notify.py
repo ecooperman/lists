@@ -36,6 +36,17 @@ def _pushover(title: str, message: str, link: Optional[str]) -> None:
     requests.post("https://api.pushover.net/1/messages.json", data=data, timeout=TIMEOUT).raise_for_status()
 
 
+def describe_failure(exc: Exception) -> str:
+    """What to log about a failed send. Normally only the exception's type
+    (some libraries put a URL or credentials in the message), but an SMTP
+    server's reply is its own text - "550 domain not verified" - never our
+    credentials, and without it a refusal can't be told from another one."""
+    if isinstance(exc, smtplib.SMTPResponseException):
+        reply = exc.smtp_error.decode("utf-8", "replace") if isinstance(exc.smtp_error, bytes) else str(exc.smtp_error)
+        return f"{type(exc).__name__} {exc.smtp_code} {_one_line(reply)[:200]}"
+    return type(exc).__name__
+
+
 def _one_line(text: str) -> str:
     """Header text must be one line: a newline in a list name would otherwise
     be refused (or worse, start a new header)."""
@@ -81,7 +92,7 @@ def notify(title: str, message: str, link: Optional[str] = None) -> None:
             send(title, message, link)
         except Exception as exc:  # noqa: BLE001 - any failure of one channel must not reach the caller
             # The type only: some libraries put the URL or credentials in the message.
-            log.warning("Notification via %s failed: %s", name, type(exc).__name__)
+            log.warning("Notification via %s failed: %s", name, describe_failure(exc))
 
 
 def invite_requested(inviter_email: str, invitee_email: str, role: str) -> None:
@@ -114,5 +125,5 @@ def tell_given_access(
     try:
         send_email(to, f'{inviter_email} shared "{list_name}" with you', "\n".join(lines))
     except Exception as exc:  # noqa: BLE001 - never fail the approval or the add that triggered this
-        log.warning("Telling the new person by email failed: %s", type(exc).__name__)
+        log.warning("Telling the new person by email failed: %s", describe_failure(exc))
 
