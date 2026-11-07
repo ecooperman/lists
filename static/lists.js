@@ -242,7 +242,39 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
     ? Global.el("div", { class: "list-category-row" }, [Global.el("label", { text: "Category" }), categorySelect])
     : null;
 
-  const details = Global.el("div", { class: "item-details hidden" }, [Global.el("div", { class: "item-details-inner" }, [categoryRow, preview])]);
+  // Owners can give people access right here, without opening the list and its
+  // Edit form: a Share button that reveals the same "Who has access" panel
+  // (access.js) - loaded on first open, refreshed each time after.
+  let shareRow = null;
+  if (itemList.my_role === "owner") {
+    const panel = Global.el("div");
+    const box = Global.el("div", { class: "access-box hidden" }, [Global.el("label", { text: "Who has access" }), panel]);
+    const toggle = Global.el("button", { type: "button", class: "secondary-btn", "aria-expanded": "false", text: "Share" });
+    let access = null;
+    toggle.addEventListener("click", () => {
+      const open = box.classList.toggle("hidden") === false;
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.textContent = open ? "Hide access" : "Share";
+      if (!open) return;
+      if (!access) {
+        access = Access.mount(panel, {
+          listId: itemList.id,
+          listName: () => itemList.name,
+          // Keep the header's "N people" badge true as people come and go.
+          onMembers(members) {
+            itemList.member_count = members.length;
+            setAccessBadge(accessSlot, itemList);
+          },
+        });
+      }
+      access.reload();
+    });
+    shareRow = Global.el("div", { class: "list-share" }, [toggle, box]);
+  }
+
+  const details = Global.el("div", { class: "item-details hidden" }, [
+    Global.el("div", { class: "item-details-inner" }, [categoryRow, shareRow, preview]),
+  ]);
 
   // Mouse devices: the name is click-to-edit in the header, and only the
   // right-hand zone (badges + chevron) expands the card - same layout as the
@@ -302,16 +334,9 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
     right.appendChild(Global.el("span", { class: "item-badge item-badge-muted", text: "Locked" }));
   }
 
-  // A list someone else owns says who, and what you can do with it; your own
-  // says how many people have access once it's more than you.
-  if (itemList.my_role !== "owner") {
-    const text = itemList.my_role === "view" ? "View only" : `${itemList.member_count} people`;
-    right.appendChild(Global.el("span", { class: "item-badge item-badge-muted", title: `Owned by ${itemList.owner_email}`, text }));
-  } else if (itemList.member_count > 1) {
-    right.appendChild(
-      Global.el("span", { class: "item-badge item-badge-muted", title: "People with access", text: `${itemList.member_count} people` })
-    );
-  }
+  const accessSlot = Global.el("span", { class: "access-slot" });
+  right.appendChild(accessSlot);
+  setAccessBadge(accessSlot, itemList);
 
   const countBadge = Global.el("span", { class: "item-badge item-badge-accent" });
   setCountBadge(countBadge, itemList);
@@ -341,6 +366,22 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
     loadPreview(itemList, preview);
   }
   return card;
+}
+
+// A list someone else owns says who, and what you can do with it; your own
+// says how many people have access once it's more than you. In a slot so
+// sharing from the card can update it in place.
+function setAccessBadge(slot, itemList) {
+  if (itemList.my_role !== "owner") {
+    const text = itemList.my_role === "view" ? "View only" : `${itemList.member_count} people`;
+    slot.replaceChildren(Global.el("span", { class: "item-badge item-badge-muted", title: `Owned by ${itemList.owner_email}`, text }));
+  } else if (itemList.member_count > 1) {
+    slot.replaceChildren(
+      Global.el("span", { class: "item-badge item-badge-muted", title: "People with access", text: `${itemList.member_count} people` })
+    );
+  } else {
+    slot.replaceChildren();
+  }
 }
 
 // The category pill sits in a slot in the header so a category change can

@@ -583,6 +583,24 @@
   font-size: 14px;
 }
 
+/* A badge slot that adds no box of its own, so the badge lays out as before. */
+.access-slot {
+  display: contents;
+}
+
+/* Share button + its panel inside an owned list's card on the lists page. */
+.list-share {
+  margin: 8px 0;
+}
+
+.access-box {
+  margin-top: 8px;
+}
+
+.access-box.hidden {
+  display: none;
+}
+
 .invite-prompt.is-error {
   color: var(--danger);
 }
