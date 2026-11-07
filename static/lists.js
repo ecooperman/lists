@@ -282,7 +282,9 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
   // the arrow (the only thing that expands the card) and - on mouse devices -
   // the name and description, which edit in place when clicked. On touch
   // devices those two are plain text (rename and describe in "Edit list").
-  const inlineHeader = typeof Global.inlineEdit === "function" && Global.supportsInlineEdit();
+  // Only the owner may rename or describe a list, so only they get the click-to-edit
+  // header; everyone else sees plain text instead of a field that would be refused.
+  const inlineHeader = typeof Global.inlineEdit === "function" && Global.supportsInlineEdit() && itemList.my_role === "owner";
   const summary = Global.el("div", { class: "item-summary list-row" + (inlineHeader ? " inline-header" : "") });
   const rowLink = Global.el("a", {
     class: "list-row-link",
