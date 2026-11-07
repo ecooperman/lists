@@ -117,9 +117,14 @@ def tell_given_access(
     if list_id is not None:
         lines += ["", f"Open it here: {config.PUBLIC_URL}/list.html?id={list_id}"]
     if new_person:
+        # Cloudflare's sign-in page can't be pre-filled from a link, so name the
+        # address to type there - it has to be this one, the one they were let in as.
         lines += [
             "",
-            "The first time you open it you'll be asked to sign in. Enter this email address "
+            "The first time you open it you'll be asked to sign in. Enter this email address:",
+            "",
+            f"    {to}",
+            "",
             "and a one-time PIN will be sent to it - there is no password to set up.",
         ]
     try:

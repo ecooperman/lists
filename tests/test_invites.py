@@ -396,6 +396,7 @@ def test_approving_emails_the_new_person_with_how_to_sign_in(alice, admin, allow
     assert "you can edit it" in body
     assert f"{config.PUBLIC_URL}/list.html?id={lst['id']}" in body
     assert "one-time PIN" in body  # they've never signed in here
+    assert f"\n    {NEWBIE}\n" in body  # the address to type on the sign-in page, on its own line
 
 
 def test_an_administrators_own_request_also_emails_the_person(admin, allowed, emails):
@@ -424,7 +425,7 @@ def test_adding_someone_let_in_who_never_opened_the_app_explains_signing_in(alic
     let_in.add("dana@example.com")
     lst = make_list(alice)
     assert alice.post(f"/api/lists/{lst['id']}/members", {"email": "dana@example.com", "role": "edit"}).status_code == 200
-    assert "one-time PIN" in emails[0][2]
+    assert "one-time PIN" in emails[0][2] and "\n    dana@example.com\n" in emails[0][2]
 
 
 def test_a_refused_add_sends_no_email(alice, emails):
