@@ -59,7 +59,7 @@ time it sees them. `GET /api/me` says who you are.
   administrator (anyone in `ADMIN_EMAILS`) approves it on the **Invites** page
   (`/invites.html`, `GET /api/admin/invites`, `POST .../{id}/approve` or
   `.../decline`): approving adds the email to the Cloudflare Access group that
-  lets people through the login gate (`app/cloudflare.py`) and puts them on the
+  lets people through the login gate (`shared_python.cloudflare` (the shared-python package)) and puts them on the
   list, so it's already there when they first sign in. Details:
   - Each person may ask for `INVITES_PER_USER` different people (default 5;
     administrators are unlimited and their own requests are approved at once).

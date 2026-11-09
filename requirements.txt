@@ -7,3 +7,4 @@ alembic==1.20.0
 requests
 beautifulsoup4
 PyJWT[crypto]
+-e ../shared-python

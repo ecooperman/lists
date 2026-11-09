@@ -336,11 +336,11 @@ def test_adding_someone_already_on_the_list_says_so(alice, bob):
 
 
 def test_someone_on_the_list_is_reported_even_if_cloudflare_no_longer_lets_them_in(alice, bob, monkeypatch):
-    from app import cloudflare
+    from shared_python import cloudflare
 
     lst = make_list(alice)
     share(alice, lst["id"], bob, "view")
-    monkeypatch.setattr(cloudflare, "is_let_in", lambda email: False)
+    monkeypatch.setattr(cloudflare, "is_let_in", lambda email, admin_emails=(): False)
     resp = alice.post(f"/api/lists/{lst['id']}/members", {"email": bob.email, "role": "edit"})
     # Not "can't sign in yet", which would offer to invite someone already here.
     assert resp.status_code == 409
