@@ -404,3 +404,8 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
   card alongside the scraped preview (if any).
 - Every list shares the same item fields for now (including the gift-flavored
   "Who is it for?" / "Needed by"); per-list fields would be the next layer.
+
+## To do
+
+The running to-do list for all projects is `../TODO.md` (in the personal-projects
+folder, one level up; not in git).
