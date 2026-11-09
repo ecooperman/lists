@@ -241,8 +241,10 @@ function initEditListForm() {
 
 function initSharing() {
   const access = Access.mount(document.getElementById("access-mount"), {
-    listId,
-    listName: () => currentList.name,
+    api: LIST_API,
+    noun: "list",
+    name: () => currentList.name,
+    hint: LIST_ACCESS_HINT,
   });
   document.getElementById("show-edit-list").addEventListener("click", () => access.reload());
 

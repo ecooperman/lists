@@ -41,8 +41,10 @@ time it sees them. `GET /api/me` says who you are.
   that doesn't exist.
 - **Who has access:** the owner manages it from "Edit list" -> "Who has access" on the
   list's own page, or with the **Share** button inside the list's expanded card on the
-  lists page - both mount the same component (`static/access.js`), so they behave
-  identically and errors show right under the email box
+  lists page - both mount the same component (shared-assets' `access.js`, shared with
+  trip-planning), so they behave identically and errors show right under the email box.
+  The box suggests addresses from `GET /api/me/people`: only people you already share
+  with or asked for, never everyone with an account
   (`GET/POST /api/lists/{id}/members`, `PATCH/DELETE .../members/{user_id}`).
   Only someone who can sign in *right now* can be added: Cloudflare is asked
   (read-only) whether the email is an administrator or in the Invitees group,

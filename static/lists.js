@@ -258,8 +258,10 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
       if (!open) return;
       if (!access) {
         access = Access.mount(panel, {
-          listId: itemList.id,
-          listName: () => itemList.name,
+          api: `/api/lists/${itemList.id}`,
+          noun: "list",
+          name: () => itemList.name,
+          hint: LIST_ACCESS_HINT,
           // Keep the header's "N people" badge true as people come and go.
           onMembers(members) {
             itemList.member_count = members.length;

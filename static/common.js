@@ -1,3 +1,10 @@
+// Wording under the "Who has access" box (the panel itself is shared-assets'
+// access.js, which takes this as its `hint`).
+const LIST_ACCESS_HINT =
+  "Add someone who already uses the app, or ask for a new person to be let in - an administrator approves each request. " +
+  "Viewers can read this list; editors can also change its items. " +
+  "Only you can rename it, change who has access, lock it or delete it.";
+
 // Helpers shared by the lists index, a single list's page and the categories
 // page (needs Global from shared-assets' theme.js).
 
