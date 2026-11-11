@@ -61,6 +61,7 @@ async def no_cache(request: Request, call_next):
 app.include_router(me.router)
 app.include_router(lists.router)
 app.include_router(invites.router)
+app.include_router(invites.app_router)
 app.include_router(items.router)
 app.include_router(contacts.router)
 app.include_router(categories.router)

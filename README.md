@@ -55,6 +55,13 @@ time it sees them. `GET /api/me` says who you are.
   added directly (their account is made then). If Cloudflare can't be asked it's
   a 502, and with Cloudflare unconfigured (local development) it falls back to
   whether they've signed in before.
+- **Inviting someone to the app itself:** anyone signed in can ask for a person with no account to be let in, without sharing anything
+  (the **Invites** page, for everyone; `GET/POST /api/app-invites`, `DELETE /api/app-invites/{id}`). It uses the same allowance,
+  administrator approval and Cloudflare step as a list invite, but approving only lets them in and gives them an account (they are
+  emailed how to sign in) - nothing is shared, they start with an empty Lists. The panel is shared-assets' `app-invites.js`. Stored as
+  an `invites` row with `for_app` set and no list; one per email. The administrator also sees every **declined** request (to the app or to one list) on the Invites page, with **Allow again**
+  (`GET /api/admin/invites/declined`, `POST /api/admin/invites/{id}/reinstate`): it removes the declined request so anyone may ask for
+  that person again, and the original asker gets that invite back.
 - **Inviting people who can't sign in yet:** the owner asks for an email to be let in, with a
   role on that list (`GET/POST /api/lists/{id}/invites`, `DELETE
   .../invites/{invite_id}` to withdraw a waiting one). It sits waiting until an
@@ -150,6 +157,7 @@ who may do what):
 - `GET /api/lists/{id}/invites` (owner) - requests still waiting or declined
 - `POST /api/lists/{id}/invites` (owner) - ask for a new person to be let in, same body as `members`
 - `DELETE /api/lists/{id}/invites/{invite_id}` (owner) - withdraw a waiting request
+- `GET/POST /api/app-invites`, `DELETE /api/app-invites/{id}` - the signed-in person's own requests to let someone into the app itself (body `{"email": "..."}`)
 - `DELETE /api/lists/{id}/members/{user_id}` - the owner removes anyone; anyone
   else can remove only themselves
 - `DELETE /api/lists/{id}` - (owner) delete a list, for everyone it's shared with. 409s if the list is `locked`

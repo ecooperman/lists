@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -162,7 +162,13 @@ class Invite(Base):
     (list_id goes NULL) so they keep counting against the inviter's allowance."""
 
     __tablename__ = "invites"
-    __table_args__ = (UniqueConstraint("list_id", "email", name="uq_invites_list_id_email"),)
+    __table_args__ = (
+        UniqueConstraint("list_id", "email", name="uq_invites_list_id_email"),
+        # An invite to the app itself has no list, and NULLs never collide in the constraint
+        # above - so one per email is enforced here (approved invites whose list was deleted
+        # also have no list, but they are not app invites, so they don't count).
+        Index("uq_invites_app_email", "email", unique=True, sqlite_where=text("for_app = 1"), postgresql_where=text("for_app")),
+    )
 
     id = Column(Integer, primary_key=True)
     list_id = Column(Integer, ForeignKey("lists.id"), nullable=True)
@@ -172,6 +178,9 @@ class Invite(Base):
     status = Column(String, nullable=False, default=INVITE_PENDING)
     created_at = Column(DateTime, default=datetime.utcnow)
     decided_at = Column(DateTime, nullable=True)
+    # True for an invite to the app itself rather than to one list: approving it only
+    # lets the person in (no list to put them on). `role` is a placeholder then.
+    for_app = Column(Boolean, nullable=False, default=False, server_default=text("0"))
 
     list = relationship("ItemList", back_populates="invites")
     invited_by = relationship("User")

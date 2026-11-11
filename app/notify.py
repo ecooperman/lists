@@ -10,7 +10,7 @@ from . import config
 APP_NAME = "Lists"
 
 
-def invite_requested(inviter_email: str, invitee_email: str, role: str) -> None:
+def invite_requested(inviter_email: str, invitee_email: str, role: Optional[str] = None) -> None:
     """Tell the administrator a list's owner asked for someone to be let in."""
     shared.invite_requested(APP_NAME, inviter_email, invitee_email, role, f"{config.PUBLIC_URL}/invites.html")
 
@@ -21,3 +21,8 @@ def tell_given_access(
     """Email someone that they've been given access to a list."""
     url = f"{config.PUBLIC_URL}/list.html?id={list_id}" if list_id is not None else None
     shared.tell_given_access(to, inviter_email, "list", list_name, url, role, new_person, APP_NAME)
+
+
+def tell_let_in(to: str, inviter_email: str) -> None:
+    """Email someone that they've been let into the app itself (nothing shared yet)."""
+    shared.tell_let_in(to, inviter_email, APP_NAME, config.PUBLIC_URL)

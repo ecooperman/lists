@@ -1,16 +1,14 @@
-import re
 from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
-
-from shared_python import cloudflare
 
 from .. import config, crud, models, notify, schemas
 from ..access import check_role, list_access
 from ..auth import current_user, is_admin
 from ..deps import get_db
 from ..importer import parse_dash_list
+from ..signin import can_sign_in, valid_email
 from .invites import approve
 
 router = APIRouter(prefix="/api/lists", tags=["lists"])
@@ -20,30 +18,6 @@ router = APIRouter(prefix="/api/lists", tags=["lists"])
 OWNER_FIELDS = {"name", "purpose", "locked", "priority_labels"}
 EDITOR_FIELDS = {"sort_mode"}
 PERSONAL_FIELDS = {"category_id"}
-
-_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-
-
-def _valid_email(raw: str) -> str:
-    email = crud.normalize_email(raw)
-    if not _EMAIL.match(email) or email == crud.LEGACY_OWNER_EMAIL:
-        raise HTTPException(status_code=400, detail="That doesn't look like an email address")
-    return email
-
-
-def _can_sign_in(db: Session, email: str) -> bool:
-    """Whether this person can get in right now. Cloudflare decides who passes
-    the login gate, so it's asked rather than inferring it from an account
-    existing - someone removed from the allowed group keeps their account but
-    can't sign in. With Cloudflare unconfigured (local development) all there
-    is to go on is whether they've signed in."""
-    try:
-        let_in = cloudflare.is_let_in(email, config.ADMIN_EMAILS)
-    except cloudflare.CloudflareError as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
-    if let_in is None:
-        return crud.get_account(db, email) is not None
-    return let_in
 
 
 @router.get("", response_model=List[schemas.ItemList])
@@ -128,7 +102,7 @@ def add_member(
 ):
     """Only people who can already sign in can be added; anyone else has to be
     asked for (POST .../invites) and approved first."""
-    email = _valid_email(body.email)
+    email = valid_email(body.email)
     # Already on the list? Say so first - it's the likeliest slip (typing your
     # own address) and Cloudflare has nothing to do with it.
     existing = crud.get_account(db, email)
@@ -142,7 +116,7 @@ def add_member(
             detail=f"{email} is already on this list and can {on_list.role}. "
             "To change that, use the dropdown beside their name.",
         )
-    if not _can_sign_in(db, email):
+    if not can_sign_in(db, email):
         raise HTTPException(status_code=404, detail="That person can't sign in yet")
     added = crud.add_member(db, member.list_id, crud.create_account(db, email), body.role)
     if added is None:  # added by someone else a moment ago
@@ -209,8 +183,8 @@ def request_invite(
     """Ask for someone with no account to be let in, with a role on this list.
     The administrator is told and decides; the person is added to the list when
     they approve. An administrator's own request is approved straight away."""
-    email = _valid_email(body.email)
-    if _can_sign_in(db, email):
+    email = valid_email(body.email)
+    if can_sign_in(db, email):
         raise HTTPException(
             status_code=409,
             detail=f"{email} can already sign in, so there's nothing to request - use Add to put them on the list.",

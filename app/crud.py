@@ -423,16 +423,21 @@ def invites_left(db: Session, user: models.User):
     return max(config.INVITES_PER_USER - used, 0)
 
 
-def create_invite(db: Session, list_id: int, inviter: models.User, email: str, role: str):
+def create_invite(db: Session, list_id: Optional[int], inviter: models.User, email: str, role: str, for_app: bool = False):
     """Returns (invite, None), or (None, reason) with reason "duplicate" (this
-    person was already asked for on this list) or "none_left"."""
-    if db.query(models.Invite).filter_by(list_id=list_id, email=email).first() is not None:
+    person was already asked for on this list, or for the app) or "none_left".
+    An invite to the app itself (for_app) has no list."""
+    if for_app:
+        already = db.query(models.Invite).filter_by(for_app=True, email=email).first()
+    else:
+        already = db.query(models.Invite).filter_by(list_id=list_id, email=email).first()
+    if already is not None:
         return None, "duplicate"
     left = invites_left(db, inviter)
     asked_before = db.query(models.Invite).filter_by(invited_by_id=inviter.id, email=email).first() is not None
     if left is not None and left <= 0 and not asked_before:
         return None, "none_left"
-    invite = models.Invite(list_id=list_id, email=email, role=role, invited_by_id=inviter.id)
+    invite = models.Invite(list_id=list_id, email=email, role=role, invited_by_id=inviter.id, for_app=for_app)
     db.add(invite)
     try:
         db.commit()
@@ -441,6 +446,32 @@ def create_invite(db: Session, list_id: int, inviter: models.User, email: str, r
         return None, "duplicate"
     db.refresh(invite)
     return invite, None
+
+
+def get_app_invite(db: Session, email: str):
+    """The request already made to let this email into the app itself, in any state."""
+    return db.query(models.Invite).filter_by(for_app=True, email=email).first()
+
+
+def get_declined_invites(db: Session):
+    """Every declined request (to the app or to a list), newest decision first, for the
+    administrator to review and, if they like, allow again."""
+    invites = (
+        db.query(models.Invite)
+        .options(joinedload(models.Invite.list), joinedload(models.Invite.invited_by))
+        .filter(models.Invite.status == models.INVITE_DECLINED)
+        .order_by(models.Invite.decided_at.desc(), models.Invite.id.desc())
+        .all()
+    )
+    for invite in invites:
+        invite.invited_by_email = invite.invited_by.email
+        invite.list_name = invite.list.name if invite.list is not None else None
+    return invites
+
+
+def get_my_app_invites(db: Session, user: models.User):
+    """The requests this person made to let people into the app itself, any state."""
+    return db.query(models.Invite).filter_by(for_app=True, invited_by_id=user.id).order_by(models.Invite.id).all()
 
 
 def get_list_invite(db: Session, list_id: int, email: str):
