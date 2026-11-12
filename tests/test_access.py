@@ -165,13 +165,14 @@ def test_deleting_a_list_removes_it_for_everyone(alice, bob):
     assert bob.get("/api/lists").json() == []
 
 
-def test_someone_who_has_never_signed_in_cant_be_added(alice, carol, db):
+def test_someone_who_was_never_let_in_cant_be_added(alice, sign_in, db):
+    carol = sign_in("carol@example.com", enabled=False)
     lst = make_list(alice)
     resp = alice.post(f"/api/lists/{lst['id']}/members", {"email": carol.email, "role": "view"})
     assert resp.status_code == 404
     # Refusing leaves no account behind, so she isn't quietly given the list later.
     assert db.query(models.User).filter_by(email=carol.email).first() is None
-    assert carol.get("/api/lists").json() == []
+    assert carol.get("/api/lists").status_code == 403
 
 
 def test_the_pre_accounts_placeholder_cant_be_added(alice):
@@ -294,10 +295,20 @@ def test_a_contact_cant_be_deleted_while_a_shared_list_uses_it(alice, bob):
 # --- accounts ------------------------------------------------------------------
 
 
-def test_me_creates_the_user_on_first_sight(alice, db):
-    assert db.query(models.User).filter_by(email=alice.email).first() is None
-    assert alice.get("/api/me").json()["email"] == alice.email
-    assert db.query(models.User).filter_by(email=alice.email).count() == 1
+def test_the_administrator_gets_an_account_on_first_sight(admin, db):
+    assert db.query(models.User).filter_by(email=admin.email).first() is None
+    assert admin.get("/api/me").json()["email"] == admin.email
+    assert db.query(models.User).filter_by(email=admin.email).count() == 1
+
+
+def test_anyone_else_has_to_be_let_in_first(sign_in, db):
+    stranger = sign_in("stranger@example.com", enabled=False)
+    for url in ("/api/me", "/api/lists", "/api/contacts"):
+        resp = stranger.get(url)
+        assert resp.status_code == 403 and "haven't been given access" in resp.json()["detail"]
+    assert stranger.post("/api/lists", {"name": "Mine"}).status_code == 403
+    # Turning up leaves no account behind to be quietly enabled later.
+    assert db.query(models.User).filter_by(email="stranger@example.com").first() is None
 
 
 def test_the_first_admin_to_sign_in_takes_over_pre_accounts_data(client, db, bob):

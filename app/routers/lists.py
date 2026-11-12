@@ -8,7 +8,7 @@ from ..access import check_role, list_access
 from ..auth import current_user, is_admin
 from ..deps import get_db
 from ..importer import parse_dash_list
-from ..signin import can_sign_in, valid_email
+from ..signin import can_sign_in, refuse_if_removed, valid_email
 from .invites import approve
 
 router = APIRouter(prefix="/api/lists", tags=["lists"])
@@ -116,15 +116,16 @@ def add_member(
             detail=f"{email} is already on this list and can {on_list.role}. "
             "To change that, use the dropdown beside their name.",
         )
+    refuse_if_removed(db, email)
     if not can_sign_in(db, email):
         raise HTTPException(status_code=404, detail="That person can't sign in yet")
-    added = crud.add_member(db, member.list_id, crud.create_account(db, email), body.role)
+    added = crud.add_member(db, member.list_id, existing, body.role)
     if added is None:  # added by someone else a moment ago
         raise HTTPException(status_code=409, detail=f"{email} is already on this list.")
-    # Tell them (by email, if it's set up). Someone with no account yet has
-    # never opened the app, so say how signing in works.
+    # Tell them (by email, if it's set up). They already have an account (see
+    # can_sign_in), so there is no need to explain how signing in works.
     background.add_task(
-        notify.tell_given_access, email, member.user.email, member.list.name, member.list_id, body.role, existing is None
+        notify.tell_given_access, email, member.user.email, member.list.name, member.list_id, body.role, False
     )
     return _member_out(crud.get_member(db, member.list_id, added.user_id))
 
@@ -184,6 +185,7 @@ def request_invite(
     The administrator is told and decides; the person is added to the list when
     they approve. An administrator's own request is approved straight away."""
     email = valid_email(body.email)
+    refuse_if_removed(db, email)
     if can_sign_in(db, email):
         raise HTTPException(
             status_code=409,

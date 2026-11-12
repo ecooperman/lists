@@ -23,11 +23,27 @@ def request_email(request: Request) -> str:
     return cloudflare_access.request_email(request, config.DEV_USER_EMAIL)
 
 
-def current_user(request: Request, db: Session = Depends(get_db)) -> models.User:
+NO_ACCESS = {
+    "none": "You haven't been given access to Lists. Ask the person who told you about it, or the administrator, to invite you.",
+    "removed": "Your access to Lists has been removed. Ask the administrator if you think that's a mistake.",
+}
+
+
+def signed_in_email(request: Request) -> str:
+    """The signed-in person's normalized email (401 if there isn't one)."""
     email = crud.normalize_email(request_email(request))
     if "@" not in email:
         raise HTTPException(status_code=401, detail="Not signed in")
-    return crud.get_or_create_user(db, email)
+    return email
+
+
+def current_user(request: Request, db: Session = Depends(get_db)) -> models.User:
+    """Whoever is asking, who must also have been enabled in this app: getting
+    through Cloudflare's login gate (shared with other apps) is not enough."""
+    user, problem = crud.user_for_request(db, signed_in_email(request))
+    if user is None:
+        raise HTTPException(status_code=403, detail=NO_ACCESS[problem])
+    return user
 
 
 def is_admin(user: models.User) -> bool:

@@ -30,8 +30,29 @@ install; see below for how schema changes are handled from here on.
 
 There is no sign-in form. Cloudflare Access already authenticates everyone
 before a request reaches the app and tells it who it was, so the app just
-reads that email (`app/auth.py`) and creates the person's account the first
-time it sees them. `GET /api/me` says who you are.
+reads that email (`app/auth.py`). Passing the gate is not enough to use the
+app, though: Cloudflare's allowed group is shared with the other apps, so each
+app decides for itself who is **enabled**. A person has a row in `users` with
+`status` `active` (enabled) or `removed`; anyone with no row, or a removed one, gets
+a 403 explaining that (and the HTML pages show a plain "no access" page with a Log
+out link instead of an empty app). Accounts are only created by the administrator's
+decision: approving an invite, or adding the person on the Users page. The
+administrators in `ADMIN_EMAILS` always get an account on first sight (and, before
+`ADMIN_EMAILS` is set in production, the first person in does, taking over the
+pre-accounts data). `GET /api/me` says who you are.
+
+- **Users page** (`/users.html`, administrator only; `GET/POST /api/admin/users`,
+  `POST .../{id}/revoke`, `POST .../{id}/restore`, `DELETE .../{id}`): everyone with
+  an account and what they own. *Add someone* lets them through the Cloudflare gate,
+  gives them an account and emails them (adding a removed person restores them).
+  *Remove access* sets `removed` here only - it never touches Cloudflare, because
+  another app may still want them - and deletes nothing, so *Restore* puts it all
+  back. *Delete account data* is a separate step, offered only for someone already
+  removed: it erases the lists they own (for everyone they were shared with), their
+  items, contacts, categories, their place on other people's lists and the requests
+  they made, behind a confirmation that spells out the counts. The email row stays,
+  removed, so signing in again can't hand them a fresh account. Administrators can't
+  be removed or deleted.
 
 - **Roles on a list:** `owner` (whoever created it - exactly one), `edit`
   (works with the items: add, edit, check off, delete, reorder, import, move,
@@ -46,15 +67,14 @@ time it sees them. `GET /api/me` says who you are.
   The box suggests addresses from `GET /api/me/people`: only people you already share
   with or asked for, never everyone with an account
   (`GET/POST /api/lists/{id}/members`, `PATCH/DELETE .../members/{user_id}`).
-  Only someone who can sign in *right now* can be added: Cloudflare is asked
-  (read-only) whether the email is an administrator or in the Invitees group,
-  not whether the app happens to have an account for it - a person removed from
-  the group keeps their account but can't open anything. Anyone else is a 404
-  ("That person can't sign in yet"), which the page turns into an offer to
-  request an invite. Someone in the group who has never opened this app is
-  added directly (their account is made then). If Cloudflare can't be asked it's
-  a 502, and with Cloudflare unconfigured (local development) it falls back to
-  whether they've signed in before.
+  Only someone who can use the app *right now* can be added: they need an active
+  account here, and Cloudflare is asked (read-only) that they are still in the
+  Invitees group (or an administrator). Being in the group for another app isn't
+  enough. Anyone else is a 404 ("That person can't sign in yet"), which the page
+  turns into an offer to request an invite; someone the administrator removed is a
+  409 saying only the administrator can restore them. If Cloudflare can't be asked
+  it's a 502, and with Cloudflare unconfigured (local development) the account is
+  all there is to go on.
 - **Inviting someone to the app itself:** anyone signed in can ask for a person with no account to be let in, without sharing anything
   (the **Invites** page, for everyone; `GET/POST /api/app-invites`, `DELETE /api/app-invites/{id}`). It uses the same allowance,
   administrator approval and Cloudflare step as a list invite, but approving only lets them in and gives them an account (they are

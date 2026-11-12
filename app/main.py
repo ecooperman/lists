@@ -1,10 +1,14 @@
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
 
+from . import crud
+from .auth import NO_ACCESS, is_admin, signed_in_email
 from .config import SHARED_ASSETS_BASE
-from .routers import categories, contacts, invites, items, lists, me
+from .deps import get_db
+from .routers import categories, contacts, invites, items, lists, me, users
 
 # Schema is owned by Alembic migrations (see migrations/) - run
 # `alembic upgrade head` before starting the app rather than relying on
@@ -14,32 +18,59 @@ app = FastAPI(title="Lists")
 templates = Jinja2Templates(directory="templates")
 
 
-# shared_assets_base baked in server-side (no client-side fetch, no flash
-# of unstyled content) - see config.py's SHARED_ASSETS_BASE. Registered
-# before the StaticFiles mount below so these take priority over it.
+def _page(request: Request, db: Session, name: str, admin_only: bool = False):
+    """One of the app's pages. It is only for people enabled in the app (the page
+    itself would just be an empty shell of failing requests otherwise), so the
+    rest get a plain explanation instead - with a Log out link, because the
+    likeliest cause is being signed in with the wrong address.
+    shared_assets_base is baked in server-side (no client-side fetch, no flash
+    of unstyled content) - see config.py's SHARED_ASSETS_BASE."""
+    email = signed_in_email(request)
+    user, problem = crud.user_for_request(db, email)
+    if user is None:
+        message = NO_ACCESS[problem]
+        heading = "Your access was removed" if problem == "removed" else "You don't have access yet"
+    elif admin_only and not is_admin(user):
+        message, heading = "Only the app's administrator can see this page.", "Administrators only"
+    else:
+        return templates.TemplateResponse(request, name, {"shared_assets_base": SHARED_ASSETS_BASE})
+    return templates.TemplateResponse(
+        request,
+        "no_access.html",
+        {"shared_assets_base": SHARED_ASSETS_BASE, "heading": heading, "message": message, "email": email},
+        status_code=403,
+    )
+
+
+# Registered before the StaticFiles mount below so these take priority over it.
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request):
-    return templates.TemplateResponse(request, "index.html", {"shared_assets_base": SHARED_ASSETS_BASE})
+def index(request: Request, db: Session = Depends(get_db)):
+    return _page(request, db, "index.html")
 
 
 @app.get("/list.html", response_class=HTMLResponse)
-def list_page(request: Request):
-    return templates.TemplateResponse(request, "list.html", {"shared_assets_base": SHARED_ASSETS_BASE})
+def list_page(request: Request, db: Session = Depends(get_db)):
+    return _page(request, db, "list.html")
 
 
 @app.get("/categories.html", response_class=HTMLResponse)
-def categories_page(request: Request):
-    return templates.TemplateResponse(request, "categories.html", {"shared_assets_base": SHARED_ASSETS_BASE})
+def categories_page(request: Request, db: Session = Depends(get_db)):
+    return _page(request, db, "categories.html")
 
 
 @app.get("/invites.html", response_class=HTMLResponse)
-def invites_page(request: Request):
-    return templates.TemplateResponse(request, "invites.html", {"shared_assets_base": SHARED_ASSETS_BASE})
+def invites_page(request: Request, db: Session = Depends(get_db)):
+    return _page(request, db, "invites.html")
+
+
+@app.get("/users.html", response_class=HTMLResponse)
+def users_page(request: Request, db: Session = Depends(get_db)):
+    return _page(request, db, "users.html", admin_only=True)
 
 
 @app.get("/contacts.html", response_class=HTMLResponse)
-def contacts_page(request: Request):
-    return templates.TemplateResponse(request, "contacts.html", {"shared_assets_base": SHARED_ASSETS_BASE})
+def contacts_page(request: Request, db: Session = Depends(get_db)):
+    return _page(request, db, "contacts.html")
 
 
 @app.middleware("http")
@@ -62,6 +93,7 @@ app.include_router(me.router)
 app.include_router(lists.router)
 app.include_router(invites.router)
 app.include_router(invites.app_router)
+app.include_router(users.router)
 app.include_router(items.router)
 app.include_router(contacts.router)
 app.include_router(categories.router)

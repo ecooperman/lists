@@ -37,6 +37,17 @@ Global.currentUser().then((me) => {
   );
   nav.insertBefore(link, nav.lastElementChild); // ahead of Refresh, which stays last
   applyIcons(link);
+
+  // The administrator also manages who has access (users.html).
+  if (me.is_admin) {
+    const users = Global.el(
+      "a",
+      { href: "/users.html", class: "app-nav-link" + (location.pathname === "/users.html" ? " active" : "") },
+      [Global.el("span", { class: "app-nav-icon", "data-icon": "person", "aria-hidden": "true" }), "Users"]
+    );
+    nav.insertBefore(users, nav.lastElementChild);
+    applyIcons(users);
+  }
 });
 
 // Who's signed in, with a Log out link, in the page header (shared-assets).

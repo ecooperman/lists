@@ -53,6 +53,29 @@ class Me(BaseModel):
     pending_invites: int = 0
 
 
+class AdminUser(BaseModel):
+    """One person with an account, as the administrator sees them on the Users
+    page, with what they own (so deleting them can be confirmed knowingly)."""
+
+    id: int
+    email: str
+    status: Literal["active", "removed"]
+    is_admin: bool
+    created_at: Optional[datetime] = None
+    owned_lists: int = 0
+    # Lists someone else owns that this person is on.
+    shared_with_them: int = 0
+    # Other people who are on the lists this person owns (deleting those lists removes the lists for them too).
+    people_on_their_lists: int = 0
+    items: int = 0
+    contacts: int = 0
+    categories: int = 0
+
+
+class UserAdd(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
 class CategoryBase(BaseModel):
     name: str = Field(min_length=1, max_length=40)
     color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
