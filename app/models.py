@@ -272,3 +272,16 @@ class LinkLabel(Base):
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     name = Column(String, nullable=False)
     sort_order = Column(Integer, nullable=False, default=0, server_default="0")
+
+
+class CopyEmail(Base):
+    """One email a person sent with "Send a copy", kept only to count how many
+    they sent today (see crud.copy_emails_left). Who it went to and what it said
+    are deliberately not stored."""
+
+    __tablename__ = "copy_emails"
+    __table_args__ = (Index("ix_copy_emails_user_id_sent_at", "user_id", "sent_at"),)
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    sent_at = Column(DateTime, nullable=False, default=datetime.utcnow)

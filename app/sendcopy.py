@@ -114,6 +114,27 @@ def _html(title: Optional[str], items, options, priority_labels) -> str:
     return "".join(out)
 
 
+def email_message(sender: str, list_name: str, result: schemas.CopyResult):
+    """(subject, text, html) for emailing a rendered copy. The copy itself is
+    what the sender previewed; a short note after it says who it is from, that
+    replies go to them, and that it is a one-time snapshot - so a stranger
+    knows why it arrived. Everything put into the HTML is escaped."""
+    note = (
+        f"Sent by {sender} using Lists. Reply to this email to reach them. "
+        "This is a one-time copy and won't change if the list does."
+    )
+    subject = f'{sender} sent you a copy of "{list_name}"'
+    text = f"{result.text}\n\n--\n{note}\n"
+    html = (
+        '<div style="font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.5;">'
+        f"{result.html}"
+        '<hr style="border: none; border-top: 1px solid #ddd; margin-top: 24px;">'
+        f'<p style="color: #666; font-size: 12px;">{escape(note)}</p>'
+        "</div>"
+    )
+    return subject, text, html
+
+
 def render(
     title: Optional[str], items: List[models.Item], options: schemas.CopyOptions, priority_labels: List[str]
 ) -> schemas.CopyResult:

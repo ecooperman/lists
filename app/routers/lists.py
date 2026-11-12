@@ -1,3 +1,4 @@
+import logging
 from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -10,6 +11,8 @@ from ..deps import get_db
 from ..importer import parse_dash_list
 from ..signin import can_sign_in, refuse_if_removed, valid_email
 from .invites import approve
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/lists", tags=["lists"])
 
@@ -254,6 +257,42 @@ def copy_list(
         options,
         member.list.priority_labels,
     )
+
+
+@router.post("/{list_id}/email", response_model=schemas.EmailCopyResult)
+def email_copy(
+    request: schemas.EmailCopyRequest,
+    member: models.ListMember = Depends(list_access(models.ROLE_VIEW)),
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Email a copy of the list to one address (Send a copy). Anyone who can see
+    the list may, view-only members included (they could retype it), within a
+    daily allowance. What is sent is made here from the chosen options, never
+    taken from the browser, and goes out with the sender's address as Reply-To."""
+    to = valid_email(request.to)
+    left = crud.copy_emails_left(db, user)
+    if left is not None and left <= 0:
+        raise HTTPException(
+            status_code=429,
+            detail=f"You've emailed {config.COPY_EMAILS_PER_DAY} copies in the last day, which is the limit. Try again tomorrow, or copy to the clipboard instead.",
+        )
+    result = sendcopy.render(
+        member.list.name if request.heading else None,
+        crud.get_items(db, member.list_id),
+        request,
+        member.list.priority_labels,
+    )
+    subject, text, html = sendcopy.email_message(user.email, member.list.name, result)
+    try:
+        sent = notify.send_email(to, subject, text, html=html, reply_to=user.email)
+    except Exception as exc:  # noqa: BLE001 - the reason is the mail server's business, not the caller's
+        log.warning("Emailing a copy failed: %s", notify.describe_failure(exc))
+        raise HTTPException(status_code=502, detail="The email couldn't be sent. Try again in a bit, or copy to the clipboard instead.")
+    if not sent:
+        raise HTTPException(status_code=503, detail="Email isn't set up on this server. Copy to the clipboard instead.")
+    crud.record_copy_email(db, user)
+    return schemas.EmailCopyResult(sent_to=to, left_today=None if left is None else left - 1)
 
 
 @router.post("/{list_id}/items", response_model=schemas.Item)

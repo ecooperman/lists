@@ -828,6 +828,20 @@
   color: var(--success);
 }
 
+.send-copy-email {
+  margin-top: 16px;
+}
+
+.send-copy-email-row {
+  display: flex;
+  gap: 8px;
+}
+
+.send-copy-email-row input {
+  flex: 1;
+  min-width: 0;
+}
+
 .send-copy-status-error {
   color: var(--danger);
 }

@@ -53,6 +53,11 @@ def _int_env(name: str, default: int) -> int:
 # request counts unless the person cancels it while it's still waiting.
 INVITES_PER_USER = _int_env("INVITES_PER_USER", 5)
 
+# How many copies of lists each person may email in any 24 hours (administrators
+# are unlimited). Emailing a copy needs no approval and can go to anyone, so
+# this is what stops the app being used to send people mail from our address.
+COPY_EMAILS_PER_DAY = _int_env("COPY_EMAILS_PER_DAY", 10)
+
 # --- links in what we send (see app/notify.py) ------------------------------
 # The Cloudflare group, ntfy/Pushover and email settings are shared by every app
 # (shared_python/settings.py); only where this app lives is its own.

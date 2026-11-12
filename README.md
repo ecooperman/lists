@@ -205,6 +205,15 @@ the first dash, blank lines, and `---` separators are ignored (see
 
 Send a copy (a one-time snapshot to paste somewhere, as opposed to sharing access):
 
+- `POST /api/lists/{id}/email` - emails the same copy to one address: the copy's
+  options plus `to`. Anyone who can see the list may (view-only included), up to
+  `COPY_EMAILS_PER_DAY` (default 10) in any 24 hours; administrators are unlimited.
+  The server makes the email itself from the options (the browser never supplies
+  the text), sends it from the app's `SMTP_FROM` with the sender as Reply-To, and ends
+  it with a note saying who it is from. Answers `{"sent_to", "left_today"}`; 429 over
+  the limit, 503 with no mail server set up, 502 if the send failed (neither of those
+  uses up the allowance). Only the sender and time are kept (table `copy_emails`),
+  never the recipient or the content.
 - `POST /api/lists/{id}/copy` - the list as `{"text", "html", "count"}`, for anyone
   who can see it, view-only members included. The body chooses what goes in; every
   field is optional: `links` (default true), `description`, `needed_by`, `priority`,
@@ -399,7 +408,9 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
   its name and links. The text is made by the server (`app/sendcopy.py`) so an
   emailed copy can later match it exactly; the browser puts both the plain text and
   the rich version (labels become clickable links) on the clipboard, and remembers
-  the last choices per list on that device only. Email delivery is not built yet.
+  the last choices per list on that device only. Below Copy, the panel has an "Or
+  email it to" box that sends the same copy by email (list page and index card, not
+  the per-item Copy links).
 - Categories (name, color, dark/light text, a drag order) are modeled on
   trip-planning's and time-management's, except a list has at most one. Set a
   list's from the dropdown inside its expanded card on the index (saves when

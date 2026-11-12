@@ -120,6 +120,17 @@ class CopyOptions(BaseModel):
     heading: bool = True  # the list's name above the items (lists only)
 
 
+class EmailCopyRequest(CopyOptions):
+    """Send a copy by email: the same choices, and who gets it (one address)."""
+
+    to: str = Field(min_length=3, max_length=254)
+
+
+class EmailCopyResult(BaseModel):
+    sent_to: str
+    left_today: Optional[int] = None  # None = no limit (administrator)
+
+
 class CopyResult(BaseModel):
     text: str  # plain text, for messages and notes
     html: str  # the rich version, for email and documents

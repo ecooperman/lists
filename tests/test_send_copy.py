@@ -219,3 +219,164 @@ def test_options_are_checked(alice):
     lst, _, _ = portland(alice)
     for bad in ({"style": "fancy"}, {"done": "maybe"}, {"order": "random"}, {"links": "sometimes"}):
         assert alice.post(f"/api/lists/{lst['id']}/copy", bad).status_code == 422
+
+
+# --- by email -------------------------------------------------------------------------
+
+import pytest  # noqa: E402
+
+from app import config, notify  # noqa: E402
+
+
+@pytest.fixture()
+def mails(monkeypatch):
+    """Every email the app tries to send: (to, subject, text, html, reply_to)."""
+    sent = []
+
+    def fake(to, subject, body, html=None, reply_to=None):
+        sent.append((to, subject, body, html, reply_to))
+        return True
+
+    monkeypatch.setattr(notify, "send_email", fake)
+    return sent
+
+
+def email_list(person, list_id, to="friend@example.com", **options):
+    return person.post(f"/api/lists/{list_id}/email", {"to": to, **options})
+
+
+def test_emailing_a_copy_sends_what_the_copy_says_with_replies_to_the_sender(alice, mails):
+    lst, _, _ = portland(alice)
+    resp = email_list(alice, lst["id"], to="Friend@Example.com")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["sent_to"] == "friend@example.com"
+    ((to, subject, text, html, reply_to),) = mails
+    assert to == "friend@example.com" and reply_to == alice.email
+    assert alice.email in subject and "Portland" in subject
+    assert text.startswith(copy_list(alice, lst["id"])["text"])
+    assert "Apartment A" in html and "<a " in html
+    assert alice.email in text and alice.email in html  # it says who it is from
+
+
+def test_the_email_follows_the_chosen_options(alice, mails):
+    lst, _, _ = portland(alice)
+    email_list(alice, lst["id"], style="numbered", links=False, heading=False)
+    assert mails[0][2].startswith("1. Apartment A\n2. Coffee shop")
+
+
+def test_what_is_typed_into_a_list_is_escaped_in_the_email(alice, mails):
+    lst = make_list(alice, "<b>Bold</b> & co")
+    make_item(alice, lst["id"], "<script>alert(1)</script>")
+    email_list(alice, lst["id"])
+    html = mails[0][3]
+    assert "<script>" not in html and "<b>Bold</b>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_view_only_members_can_email_but_strangers_cant(alice, bob, carol, mails):
+    lst, _, _ = portland(alice)
+    share(alice, lst["id"], bob, "view")
+    assert email_list(bob, lst["id"]).status_code == 200
+    assert mails[0][4] == bob.email
+    assert email_list(carol, lst["id"]).status_code == 404
+    assert len(mails) == 1
+
+
+def test_a_stranger_without_an_account_cant_email(sign_in, alice, mails):
+    lst, _, _ = portland(alice)
+    nobody = sign_in("nobody@example.com", enabled=False)
+    assert email_list(nobody, lst["id"]).status_code == 403
+    assert mails == []
+
+
+def test_the_recipient_must_be_an_email_address_and_nothing_is_sent_otherwise(alice, mails):
+    lst, _, _ = portland(alice)
+    for bad in ("not an address", "a@b", "x@example.com\nBcc: y@example.com", ""):
+        assert email_list(alice, lst["id"], to=bad).status_code in (400, 422), bad
+    assert mails == []
+
+
+def test_a_daily_allowance_limits_how_many_can_be_emailed(alice, mails, monkeypatch):
+    monkeypatch.setattr(config, "COPY_EMAILS_PER_DAY", 2)
+    lst, _, _ = portland(alice)
+    first = email_list(alice, lst["id"])
+    assert first.json()["left_today"] == 1
+    assert email_list(alice, lst["id"]).json()["left_today"] == 0
+    refused = email_list(alice, lst["id"])
+    assert refused.status_code == 429 and "limit" in refused.json()["detail"]
+    assert len(mails) == 2
+
+
+def test_the_allowance_is_per_person_and_resets_after_a_day(alice, bob, mails, monkeypatch, db):
+    from datetime import datetime, timedelta
+
+    from app import models
+
+    monkeypatch.setattr(config, "COPY_EMAILS_PER_DAY", 1)
+    lst, _, _ = portland(alice)
+    share(alice, lst["id"], bob, "view")
+    assert email_list(alice, lst["id"]).status_code == 200
+    assert email_list(alice, lst["id"]).status_code == 429
+    assert email_list(bob, lst["id"]).status_code == 200  # bob's own allowance
+    db.query(models.CopyEmail).update({models.CopyEmail.sent_at: datetime.utcnow() - timedelta(days=1, minutes=1)})
+    db.commit()
+    assert email_list(alice, lst["id"]).status_code == 200
+
+
+def test_the_administrator_has_no_daily_limit(admin, mails, monkeypatch):
+    monkeypatch.setattr(config, "COPY_EMAILS_PER_DAY", 1)
+    lst, _, _ = portland(admin)
+    for _ in range(3):
+        resp = email_list(admin, lst["id"])
+        assert resp.status_code == 200 and resp.json()["left_today"] is None
+
+
+def test_a_failed_or_unconfigured_send_is_reported_and_doesnt_use_the_allowance(alice, monkeypatch, db):
+    from app import models
+
+    lst, _, _ = portland(alice)
+    monkeypatch.setattr(notify, "send_email", lambda *a, **k: False)  # no mail server set up
+    assert email_list(alice, lst["id"]).status_code == 503
+
+    def broken(*a, **k):
+        raise OSError("connection refused: smtp.secret.example")
+
+    monkeypatch.setattr(notify, "send_email", broken)
+    resp = email_list(alice, lst["id"])
+    assert resp.status_code == 502 and "secret" not in resp.text
+    assert db.query(models.CopyEmail).count() == 0
+
+
+def test_only_the_sender_and_time_are_kept(alice, mails, db):
+    from app import models
+
+    lst, _, _ = portland(alice)
+    email_list(alice, lst["id"])
+    (row,) = db.query(models.CopyEmail).all()
+    assert {c.name for c in models.CopyEmail.__table__.columns} == {"id", "user_id", "sent_at"}
+    assert row.sent_at is not None
+
+
+def test_the_email_never_mentions_who_the_list_is_shared_with(alice, bob, mails):
+    lst, _, _ = portland(alice)
+    share(alice, lst["id"], bob, "edit")
+    email_list(alice, lst["id"], description=True, needed_by=True, priority=True, progress=True, recipient=True)
+    assert bob.email not in mails[0][2] + mails[0][3]
+
+
+def test_the_note_at_the_end_is_escaped_in_the_rich_version():
+    from app import schemas, sendcopy
+
+    _, text, html = sendcopy.email_message("a<i>b</i>@example.com", "L", schemas.CopyResult(text="x", html="<p>x</p>", count=1))
+    assert "<i>" not in html and "&lt;i&gt;" in html
+    assert "a<i>b</i>@example.com" in text
+
+
+def test_deleting_a_removed_persons_data_clears_their_email_count(admin, alice, mails, db):
+    from app import crud, models
+
+    lst, _, _ = portland(alice)
+    email_list(alice, lst["id"])
+    user = crud.get_account(db, alice.email)
+    crud.delete_user_data(db, user)
+    assert db.query(models.CopyEmail).count() == 0

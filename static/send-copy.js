@@ -137,7 +137,25 @@ const SendCopy = (function () {
     const actions = Global.el("div", { class: "item-actions" }, [copyBtn, status]);
     if (onClose) actions.appendChild(Global.el("button", { type: "button", class: "cancel-btn", text: "Close", onclick: onClose }));
 
-    container.replaceChildren(options, preview, note, actions);
+    // Emailing the same copy: one address, sent from the app on the person's
+    // behalf with replies coming to them. The server makes the email from the
+    // chosen options itself, so what arrives is what the preview shows (plus a
+    // short note at the end saying who it is from).
+    const emailInput = Global.el("input", { type: "email", placeholder: "friend@example.com", autocomplete: "off", "aria-label": "Email address to send the copy to" });
+    const emailBtn = Global.el("button", { type: "button", class: "save-btn", text: "Email it" });
+    const emailStatus = Global.el("span", { class: "send-copy-status", role: "status" });
+    const emailHint = Global.el("span", {
+      class: "field-hint",
+      text: "Sent from Lists on your behalf; replies come to you. A short note at the end says who it is from and that it is a one-time copy.",
+    });
+    const emailBox = Global.el("div", { class: "field send-copy-email" }, [
+      Global.el("label", { text: "Or email it to" }),
+      Global.el("div", { class: "send-copy-email-row" }, [emailInput, emailBtn]),
+      emailStatus,
+      emailHint,
+    ]);
+
+    container.replaceChildren(options, preview, note, actions, emailBox);
 
     function current() {
       const now = {};
@@ -184,6 +202,40 @@ const SendCopy = (function () {
       } catch (err) {
         status.className = "send-copy-status send-copy-status-error";
         status.textContent = err.message || "Couldn't copy.";
+      }
+    });
+
+    async function sendEmail() {
+      const to = emailInput.value.trim();
+      emailStatus.className = "send-copy-status";
+      emailStatus.textContent = "";
+      if (!to) {
+        emailStatus.className = "send-copy-status send-copy-status-error";
+        emailStatus.textContent = "Type the email address to send it to.";
+        emailInput.focus();
+        return;
+      }
+      emailBtn.disabled = true;
+      emailBtn.textContent = "Sending...";
+      try {
+        const sent = await post(`/api/lists/${listId}/email`, { ...current(), to });
+        const left = sent.left_today == null ? "" : ` ${sent.left_today} more ${sent.left_today === 1 ? "email" : "emails"} left today.`;
+        emailStatus.textContent = `Sent to ${sent.sent_to}.${left}`;
+        emailInput.value = "";
+      } catch (err) {
+        emailStatus.className = "send-copy-status send-copy-status-error";
+        emailStatus.textContent = err.message || "Couldn't send it.";
+      } finally {
+        emailBtn.disabled = false;
+        emailBtn.textContent = "Email it";
+      }
+    }
+
+    emailBtn.addEventListener("click", sendEmail);
+    emailInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        sendEmail();
       }
     });
 

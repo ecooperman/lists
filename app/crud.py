@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import case, func
@@ -141,6 +141,7 @@ def delete_user_data(db: Session, user: models.User) -> None:
     db.query(models.Contact).filter(models.Contact.owner_id == user.id).delete()
     db.query(models.Category).filter(models.Category.owner_id == user.id).delete()
     db.query(models.LinkLabel).filter(models.LinkLabel.owner_id == user.id).delete()
+    db.query(models.CopyEmail).filter(models.CopyEmail.user_id == user.id).delete()
     db.commit()
 
 
@@ -600,6 +601,23 @@ def invites_left(db: Session, user: models.User):
         db.query(func.count(func.distinct(models.Invite.email))).filter(models.Invite.invited_by_id == user.id).scalar()
     )
     return max(config.INVITES_PER_USER - used, 0)
+
+
+def copy_emails_left(db: Session, user: models.User) -> Optional[int]:
+    """How many more copies this person may email today (a rolling 24 hours);
+    None for an administrator, who has no limit."""
+    if _is_admin_email(user):
+        return None
+    since = datetime.utcnow() - timedelta(days=1)
+    used = db.query(func.count(models.CopyEmail.id)).filter(
+        models.CopyEmail.user_id == user.id, models.CopyEmail.sent_at > since
+    ).scalar()
+    return max(config.COPY_EMAILS_PER_DAY - used, 0)
+
+
+def record_copy_email(db: Session, user: models.User) -> None:
+    db.add(models.CopyEmail(user_id=user.id))
+    db.commit()
 
 
 def create_invite(db: Session, list_id: Optional[int], inviter: models.User, email: str, role: str, for_app: bool = False):
