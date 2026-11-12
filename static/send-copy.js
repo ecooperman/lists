@@ -131,7 +131,10 @@ const SendCopy = (function () {
     const preview = Global.el("pre", { class: "send-copy-preview", "aria-live": "polite" });
     const note = Global.el("span", { class: "field-hint", text: "Messages and notes get the plain text above. Email and documents get a version where link labels are clickable." });
     const copyBtn = Global.el("button", { type: "button", class: "save-btn", text: "Copy" });
-    const actions = Global.el("div", { class: "item-actions" }, [copyBtn]);
+    // Feedback sits beside the button: the page's message bar is at the top of
+    // the page and is out of sight when the panel is scrolled into view.
+    const status = Global.el("span", { class: "send-copy-status", role: "status" });
+    const actions = Global.el("div", { class: "item-actions" }, [copyBtn, status]);
     if (onClose) actions.appendChild(Global.el("button", { type: "button", class: "cancel-btn", text: "Close", onclick: onClose }));
 
     container.replaceChildren(options, preview, note, actions);
@@ -168,11 +171,19 @@ const SendCopy = (function () {
     copyBtn.addEventListener("click", async () => {
       if (!result) return;
       const shown = result;
+      status.className = "send-copy-status";
+      status.textContent = "";
       try {
         await writeClipboard(Promise.resolve(shown));
-        Global.showMessage(`Copied ${shown.count} item${shown.count === 1 ? "" : "s"}.`, "success");
+        status.textContent = `Copied ${shown.count} item${shown.count === 1 ? "" : "s"} to the clipboard.`;
+        copyBtn.textContent = "Copied";
+        setTimeout(() => {
+          copyBtn.textContent = "Copy";
+          status.textContent = "";
+        }, 3000);
       } catch (err) {
-        Global.showMessage(err.message, "error");
+        status.className = "send-copy-status send-copy-status-error";
+        status.textContent = err.message || "Couldn't copy.";
       }
     });
 

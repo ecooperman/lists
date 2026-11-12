@@ -822,6 +822,16 @@
   overflow: auto;
 }
 
+.send-copy-status {
+  align-self: center;
+  font-size: 13px;
+  color: var(--success);
+}
+
+.send-copy-status-error {
+  color: var(--danger);
+}
+
 /* In an item's expanded card the copy button sits with Delete/Save. */
 .item-copy-links[hidden],
 .item-copy-links.hidden {
