@@ -377,7 +377,9 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
   one: its site shows on the collapsed row (with "+N" for the others) and it is the
   one "Fetch preview" fetches; drag the handle to change which that is. Making a
   different link the first one discards the fetched preview (it was of the old one).
-  Links save themselves as you edit them, like progress, not with the Save button.
+  On a mouse each label and address reads as text until clicked, like the other
+  fields (on touch they are plain inputs); links save themselves as you edit them,
+  like progress, not with the Save button.
 - Categories (name, color, dark/light text, a drag order) are modeled on
   trip-planning's and time-management's, except a list has at most one. Set a
   list's from the dropdown inside its expanded card on the index (saves when

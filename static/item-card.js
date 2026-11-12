@@ -308,6 +308,7 @@ const ItemCard = (function () {
     const linksQueue = createSaveQueue();
     const linksEditor = buildLinksEditor(item, {
       queue: linksQueue,
+      inline,
       onSaved() {
         refreshSummary(card, item, ctx);
         renderScrape();
@@ -494,141 +495,248 @@ const ItemCard = (function () {
   const WEB_ADDRESS = /^https?:\/\/\S+$/i;
   const ADD_LABEL = "__add__";
 
-  // The options for one link's dropdown: no label, then the person's labels,
-  // then the link's own current label if it isn't one of them (a collaborator's
-  // wording, or one since deleted) so it doesn't silently vanish on edit.
-  function fillLabelOptions(select, current) {
-    select.replaceChildren(Global.el("option", { value: "", text: "No label" }));
+  // The choices for one link's label: no label, then the person's labels, then
+  // the link's own current label if it isn't one of them (a collaborator's
+  // wording, or one since deleted) so it doesn't silently vanish on edit, then
+  // the way to make a new one.
+  function labelOptions(current) {
     const names = current && !linkLabels.includes(current) ? [...linkLabels, current] : linkLabels;
-    for (const name of names) select.appendChild(Global.el("option", { value: name, text: name }));
-    select.appendChild(Global.el("option", { value: ADD_LABEL, text: "Add new label..." }));
+    return [
+      { value: "", label: "No label" },
+      ...names.map((name) => ({ value: name, label: name })),
+      { value: ADD_LABEL, label: "Add new label..." },
+    ];
+  }
+
+  // The same choices for an ordinary <select> (touch devices).
+  function fillLabelOptions(select, current) {
+    select.replaceChildren(...labelOptions(current).map((o) => Global.el("option", { value: o.value, text: o.label })));
     select.value = current || "";
   }
 
-  function buildLinksEditor(item, { queue, onSaved }) {
+  // Adds a label to the person's own list; a name they already have (any
+  // capitalisation) is reused rather than refused. Resolves with the name to
+  // use, or null if it couldn't be added (the error is shown).
+  async function addLabel(name) {
+    const existing = linkLabels.find((n) => n.toLowerCase() === name.toLowerCase());
+    if (existing) return existing;
+    try {
+      const created = await Global.fetchJSON(LINK_LABELS_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      linkLabels.push(created.name);
+      return created.name;
+    } catch (err) {
+      Global.showMessage(err.message, "error");
+      return null;
+    }
+  }
+
+  // Swaps `anchor` (the label control) for a small "name it" form until it is
+  // answered; done(name) gets the label to use, or null if it was cancelled.
+  function askForLabel(anchor, done) {
+    const nameInput = Global.el("input", { type: "text", class: "link-new-label", placeholder: "New label", maxlength: "40", "aria-label": "New label" });
+    const addBtn = Global.el("button", { type: "button", class: "save-btn", text: "Add" });
+    const cancelBtn = Global.el("button", { type: "button", class: "link-cancel", text: "Cancel" });
+    const form = Global.el("span", { class: "link-new-label-form" }, [nameInput, addBtn, cancelBtn]);
+    anchor.classList.add("hidden");
+    anchor.after(form);
+    nameInput.focus();
+    let finished = false;
+    const finish = (name) => {
+      if (finished) return;
+      finished = true;
+      form.remove();
+      anchor.classList.remove("hidden");
+      done(name);
+    };
+    let adding = false;
+    const submit = async () => {
+      if (adding) return;
+      adding = true;
+      const typed = nameInput.value.trim();
+      finish(typed ? await addLabel(typed) : null);
+    };
+    addBtn.addEventListener("click", submit);
+    cancelBtn.addEventListener("click", () => finish(null));
+    nameInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        submit();
+      } else if (e.key === "Escape") {
+        finish(null);
+      }
+    });
+  }
+
+  // The links field. On a mouse, each label and address reads as plain text
+  // and is edited by clicking it, like the item's other fields; on touch they
+  // are ordinary inputs (see buildItemDetails for why). Either way a change is
+  // saved as soon as it is made: the whole set of links is sent, in order.
+  // Each row keeps its own values in `row._link`, so what is saved never
+  // depends on which kind of control is showing.
+  function buildLinksEditor(item, { queue, inline, onSaved }) {
     const wrap = Global.el("div", { class: "links-editor" });
     const rows = Global.el("div", { class: "link-rows" });
-    let saved = JSON.stringify((item.links || []).map((l) => [l.label || null, l.url]));
+    const refreshers = []; // redraw every row's label choices after one is added
+    const signatureOf = (links) => JSON.stringify(links.map((l) => [l.label || null, l.url]));
+    let saved = signatureOf(item.links || []);
 
-    // What the rows hold now: complete rows only (a row with no address yet is
-    // just a place to type, not a link).
+    // What the rows hold now, in order. A row with no address yet is just a
+    // place to type, not a link.
     function collect() {
-      const links = [];
-      for (const row of rows.querySelectorAll(".link-row")) {
-        const url = row.querySelector(".link-url").value.trim();
-        if (!url) continue;
-        links.push({ label: row.querySelector(".link-label").value || null, url });
-      }
-      return links;
+      return [...rows.querySelectorAll(":scope > .link-row")]
+        .map((row) => ({ label: row._link.label || null, url: row._link.url.trim() }))
+        .filter((l) => l.url);
     }
 
-    function commit() {
+    // Saves what the rows hold; throws (for the caller to show) if it can't.
+    async function save() {
       const links = collect();
       if (links.some((l) => !WEB_ADDRESS.test(l.url))) {
-        Global.showMessage("A link must be a web address starting with http:// or https://", "error");
-        return Promise.resolve();
+        throw new Error("A link must be a web address starting with http:// or https://");
       }
-      const signature = JSON.stringify(links.map((l) => [l.label, l.url]));
-      if (signature === saved) return Promise.resolve();
-      return queue.run(async () => {
-        try {
-          const updated = await patchItem(item, { links });
-          item.links = updated.links;
-          item.url = updated.url;
-          // A different primary link voids the preview fetched for the old one.
-          item.scrape_status = updated.scrape_status;
-          item.scraped_title = updated.scraped_title;
-          item.scraped_description = updated.scraped_description;
-          item.scraped_image_url = updated.scraped_image_url;
-          item.scrape_error = updated.scrape_error;
-          saved = JSON.stringify(updated.links.map((l) => [l.label || null, l.url]));
-          onSaved();
-        } catch (err) {
-          Global.showMessage(err.message, "error");
-        }
+      if (signatureOf(links) === saved) return;
+      await queue.run(async () => {
+        const updated = await patchItem(item, { links });
+        item.links = updated.links;
+        item.url = updated.url;
+        // A different primary link voids the preview fetched for the old one.
+        item.scrape_status = updated.scrape_status;
+        item.scraped_title = updated.scraped_title;
+        item.scraped_description = updated.scraped_description;
+        item.scraped_image_url = updated.scraped_image_url;
+        item.scrape_error = updated.scrape_error;
+        saved = signatureOf(updated.links);
+        onSaved();
       });
     }
 
-    async function addLabel(name) {
-      const existing = linkLabels.find((n) => n.toLowerCase() === name.toLowerCase());
-      if (existing) return existing;
+    async function saveAndShowErrors() {
       try {
-        const created = await Global.fetchJSON(LINK_LABELS_API, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name }),
-        });
-        linkLabels.push(created.name);
-        return created.name;
+        await save();
       } catch (err) {
         Global.showMessage(err.message, "error");
-        return null;
       }
     }
 
     function rowElement(link) {
+      const row = Global.el("div", { class: "link-row" });
+      row._link = { label: link.label || "", url: link.url || "" };
       const handle = Global.el("span", { class: "link-drag-handle", "aria-label": "Drag to reorder", text: "⋮⋮" });
-      const select = Global.el("select", { class: "link-label", "aria-label": "What this link is" });
-      fillLabelOptions(select, link.label || "");
-      const urlInput = Global.el("input", {
-        type: "url",
-        class: "link-url",
-        placeholder: "https://...",
-        maxlength: "2000",
-        "aria-label": "Link address",
-      });
-      urlInput.value = link.url || "";
       const removeBtn = Global.el("button", { type: "button", class: "link-remove", "aria-label": "Remove link", text: "×" });
-      const row = Global.el("div", { class: "link-row" }, [handle, select, urlInput, removeBtn]);
 
-      let lastLabel = select.value;
-      select.addEventListener("change", () => {
-        if (select.value !== ADD_LABEL) {
-          lastLabel = select.value;
-          commit();
-          return;
+      // Change one field and save; if that fails the field goes back to what it was.
+      async function change(field, value) {
+        const previous = row._link[field];
+        row._link[field] = value;
+        try {
+          await save();
+        } catch (err) {
+          row._link[field] = previous;
+          throw err;
         }
-        // Swap the dropdown for a small "name it" form until it's done.
-        const nameInput = Global.el("input", { type: "text", class: "link-new-label", placeholder: "New label", maxlength: "40", "aria-label": "New label" });
-        const addBtn = Global.el("button", { type: "button", class: "save-btn", text: "Add" });
-        const cancelBtn = Global.el("button", { type: "button", class: "link-cancel", text: "Cancel" });
-        const form = Global.el("span", { class: "link-new-label-form" }, [nameInput, addBtn, cancelBtn]);
-        select.classList.add("hidden");
-        select.after(form);
-        nameInput.focus();
-        const finish = (name) => {
-          form.remove();
-          select.classList.remove("hidden");
-          fillLabelOptions(select, name || lastLabel);
-          lastLabel = select.value;
-          if (name) commit();
+      }
+
+      if (inline) {
+        const options = [];
+        const refresh = () => options.splice(0, options.length, ...labelOptions(row._link.label));
+        refresh();
+        refreshers.push(refresh);
+        const labelField = Global.inlineEdit({
+          type: "select",
+          value: row._link.label,
+          options,
+          placeholder: "No label",
+          className: "link-label-edit",
+          async onSave(raw) {
+            if (raw === ADD_LABEL) {
+              askForLabel(labelField, async (name) => {
+                if (!name) return;
+                refreshers.forEach((fn) => fn());
+                try {
+                  await change("label", name);
+                  labelField.setValue(name);
+                } catch (err) {
+                  Global.showMessage(err.message, "error");
+                }
+              });
+              return row._link.label;
+            }
+            await change("label", raw);
+            refresh();
+            return raw;
+          },
+        });
+        const openLink = Global.el("a", { class: "link-open", target: "_blank", rel: "noopener noreferrer", title: "Open this link", "aria-label": "Open this link", text: "↗" });
+        const showOpen = () => {
+          if (row._link.url) openLink.setAttribute("href", row._link.url);
+          else openLink.removeAttribute("href");
+          openLink.classList.toggle("hidden", !row._link.url);
         };
-        const submit = async () => {
-          const typed = nameInput.value.trim();
-          if (!typed) return finish(null);
-          finish(await addLabel(typed));
-        };
-        addBtn.addEventListener("click", submit);
-        cancelBtn.addEventListener("click", () => finish(null));
-        nameInput.addEventListener("keydown", (e) => {
+        showOpen();
+        const urlField = Global.inlineEdit({
+          type: "url",
+          value: row._link.url,
+          placeholder: "Click to add a link",
+          className: "link-url-edit",
+          async onSave(raw) {
+            if (!WEB_ADDRESS.test(raw)) throw new Error("A link must be a web address starting with http:// or https://");
+            await change("url", raw);
+            showOpen();
+            return raw;
+          },
+        });
+        row._focusUrl = () => urlField.querySelector(".inline-edit-display").click();
+        row.append(handle, labelField, urlField, openLink, removeBtn);
+      } else {
+        const select = Global.el("select", { class: "link-label", "aria-label": "What this link is" });
+        fillLabelOptions(select, row._link.label);
+        refreshers.push(() => fillLabelOptions(select, row._link.label));
+        const urlInput = Global.el("input", { type: "url", class: "link-url", placeholder: "https://...", maxlength: "2000", "aria-label": "Link address" });
+        urlInput.value = row._link.url;
+        select.addEventListener("change", () => {
+          if (select.value !== ADD_LABEL) {
+            row._link.label = select.value;
+            saveAndShowErrors();
+            return;
+          }
+          askForLabel(select, async (name) => {
+            if (!name) {
+              select.value = row._link.label;
+              return;
+            }
+            refreshers.forEach((fn) => fn());
+            row._link.label = name;
+            select.value = name;
+            await saveAndShowErrors();
+          });
+        });
+        urlInput.addEventListener("change", () => {
+          row._link.url = urlInput.value.trim();
+          saveAndShowErrors();
+        });
+        urlInput.addEventListener("keydown", (e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            submit();
-          } else if (e.key === "Escape") {
-            finish(null);
+            urlInput.blur();
           }
         });
-      });
-      urlInput.addEventListener("change", commit);
-      urlInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          urlInput.blur();
-        }
-      });
-      removeBtn.addEventListener("click", () => {
+        row._focusUrl = () => urlInput.focus();
+        row.append(handle, select, urlInput, removeBtn);
+      }
+
+      removeBtn.addEventListener("click", async () => {
+        const next = row.nextSibling;
         row.remove();
-        commit();
+        try {
+          await save();
+        } catch (err) {
+          rows.insertBefore(row, next);
+          Global.showMessage(err.message, "error");
+        }
       });
       return row;
     }
@@ -642,7 +750,7 @@ const ItemCard = (function () {
       onclick: () => {
         const row = rowElement({ label: "", url: "" });
         rows.appendChild(row);
-        row.querySelector(".link-url").focus();
+        row._focusUrl();
       },
     });
 
@@ -653,7 +761,7 @@ const ItemCard = (function () {
         animation: 150,
         forceFallback: true,
         onEnd(evt) {
-          if (evt.oldIndex !== evt.newIndex) commit();
+          if (evt.oldIndex !== evt.newIndex) saveAndShowErrors();
         },
       });
     }

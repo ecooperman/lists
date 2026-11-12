@@ -733,6 +733,34 @@
   }
 }
 
+/* On a mouse the label and address read as text until clicked (inlineEdit). */
+.link-row .link-label-edit {
+  width: 140px;
+  flex-shrink: 0;
+}
+
+.link-row .link-url-edit {
+  flex: 1;
+  min-width: 0;
+}
+
+.link-url-edit .inline-edit-display {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-open {
+  flex-shrink: 0;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 4px 6px;
+}
+
+.link-open:hover {
+  color: var(--text);
+}
+
 /* The links editor needs the full row, not half of the two-column grid. */
 .item-fields .field-links {
   grid-column: 1 / -1;
