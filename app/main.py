@@ -8,7 +8,7 @@ from . import crud
 from .auth import NO_ACCESS, is_admin, signed_in_email
 from .config import SHARED_ASSETS_BASE
 from .deps import get_db
-from .routers import categories, contacts, invites, items, lists, me, users
+from .routers import categories, contacts, invites, items, link_labels, lists, me, users
 
 # Schema is owned by Alembic migrations (see migrations/) - run
 # `alembic upgrade head` before starting the app rather than relying on
@@ -89,6 +89,11 @@ async def no_cache(request: Request, call_next):
     return response
 
 
+@app.get("/link-labels.html", response_class=HTMLResponse)
+def link_labels_page(request: Request, db: Session = Depends(get_db)):
+    return _page(request, db, "link-labels.html")
+
+
 app.include_router(me.router)
 app.include_router(lists.router)
 app.include_router(invites.router)
@@ -97,6 +102,7 @@ app.include_router(users.router)
 app.include_router(items.router)
 app.include_router(contacts.router)
 app.include_router(categories.router)
+app.include_router(link_labels.router)
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Link Labels - Lists</title>
+  <link rel="stylesheet" href="{{ shared_assets_base }}/theme.css" />
+  <link rel="stylesheet" href="/style.css" />
+  <!-- Drag-to-reorder; same pinned CDN build the list pages use. -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <h1>Link Labels</h1>
+    <p class="subtitle">The choices in the dropdown when you label a link on an item (Menu, Reviews, Where to buy...). Drag to set the order they appear in.</p>
+  </header>
+
+  <main>
+    <div id="app-nav-mount"></div>
+
+    <div id="page-message" class="page-message hidden"></div>
+
+    <div id="link-label-rows" class="category-rows"></div>
+
+    <form id="add-link-label-form" class="category-row new-category-row">
+      <input type="text" id="new-link-label-name" placeholder="Label, e.g. Menu" maxlength="40" required />
+      <button type="submit" class="save-btn">Add label</button>
+    </form>
+
+    <p class="field-hint">Renaming or deleting a label doesn't change links that already use it: each link keeps the words it was given, and everyone a list is shared with sees those words.</p>
+  </main>
+
+  <script src="{{ shared_assets_base }}/theme.js"></script>
+  <script src="{{ shared_assets_base }}/icons.js"></script>
+  <script src="/nav.js"></script>
+  <script src="/common.js"></script>
+  <script src="/link-labels.js"></script>
+</body>
+</html>

@@ -469,6 +469,8 @@ async function loadPreview(itemList, preview) {
         Global.fetchJSON(`/api/lists/${itemList.id}/items`),
         // Who an item can be for: this list's owner's contacts (names only).
         Global.fetchJSON(`/api/lists/${itemList.id}/contacts`).catch(() => []),
+        // The dropdown for labelling an item's links (cached after the first load).
+        ItemCard.loadLinkLabels(),
       ])
     );
   } catch (err) {

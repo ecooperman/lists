@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from .models import ScrapeStatus
 
@@ -101,6 +101,26 @@ class Category(CategoryBase):
 
 class CategoryReorderRequest(BaseModel):
     # The full new order as category ids; the server resequences everyone.
+    ordered_ids: List[int]
+
+
+class LinkLabelCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+
+
+class LinkLabelUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=40)
+
+
+class LinkLabel(LinkLabelCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    sort_order: int
+
+
+class LinkLabelReorderRequest(BaseModel):
+    # The full new order as label ids; the server resequences everyone.
     ordered_ids: List[int]
 
 
@@ -212,17 +232,49 @@ class AdminInvite(Invite):
     list_name: Optional[str] = None
 
 
+MAX_LINKS_PER_ITEM = 20
+
+
+class ItemLinkIn(BaseModel):
+    """A link as it is sent: what it is (optional) and where it goes."""
+
+    label: Optional[str] = Field(default=None, max_length=40)
+    url: str = Field(max_length=2000)
+
+    @field_validator("label")
+    @classmethod
+    def _clean_label(cls, value):
+        value = (value or "").strip()
+        return value or None
+
+    @field_validator("url")
+    @classmethod
+    def _web_address_only(cls, value):
+        value = value.strip()
+        # Only web pages: these end up as clickable addresses for everyone the
+        # list is shared with, so javascript: and the like are refused outright.
+        if not value.lower().startswith(("http://", "https://")) or len(value) <= len("https://"):
+            raise ValueError("A link must be a web address starting with http:// or https://")
+        return value
+
+
+class ItemLink(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    label: Optional[str] = None
+    url: str
+
+
 class ItemBase(BaseModel):
     name: str
     description: Optional[str] = None
-    url: Optional[str] = None
     needed_by: Optional[datetime] = None
     recipient_id: Optional[int] = None
     priority: Optional[int] = Field(default=None, ge=1, le=5)
 
 
 class ItemCreate(ItemBase):
-    pass
+    links: List[ItemLinkIn] = Field(default_factory=list, max_length=MAX_LINKS_PER_ITEM)
 
 
 class ItemImportRequest(BaseModel):
@@ -242,7 +294,9 @@ class ItemImportPreview(BaseModel):
 class ItemUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    url: Optional[str] = None
+    # The whole set of links, in order: sending it replaces what the item has
+    # (an empty list clears them); leaving it out changes nothing.
+    links: Optional[List[ItemLinkIn]] = Field(default=None, max_length=MAX_LINKS_PER_ITEM)
     needed_by: Optional[datetime] = None
     recipient_id: Optional[int] = None
     done: Optional[bool] = None
@@ -258,6 +312,10 @@ class Item(ItemBase):
 
     id: int
     list_id: int
+    links: List[ItemLink] = []
+    # The first link's address (null if there are none): what older callers
+    # of this API knew as the item's one url. Read-only.
+    url: Optional[str] = None
     done: bool
     done_at: Optional[datetime] = None
     progress: int

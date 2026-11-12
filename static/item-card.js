@@ -16,6 +16,7 @@
 
 const ItemCard = (function () {
   const ITEMS_API = "/api/items";
+  const LINK_LABELS_API = "/api/link-labels";
 
   function contactName(contact) {
     if (!contact) return null;
@@ -53,7 +54,7 @@ const ItemCard = (function () {
       { key: "priority", label: "Priority", type: "select", options: priorityOptions, get: (it) => (it.priority ? String(it.priority) : ""), toApi: (v) => (v ? Number(v) : null) },
       { key: "list_id", label: "List", type: "select", options: listOptions, get: (it) => String(it.list_id), toApi: (v) => Number(v) },
       { key: "description", label: "Description", type: "textarea", get: (it) => it.description || "", toApi: (v) => v || null },
-      { key: "url", label: "URL", type: "url", get: (it) => it.url || "", toApi: (v) => v || null },
+      { key: "links", label: "Links", custom: true },
       { key: "needed_by", label: "Needed by", type: "date", format: formatLongDate, get: (it) => Global.toISODate(it.needed_by), toApi: (v) => Global.dateInputToISO(v) },
     ];
   }
@@ -175,11 +176,14 @@ const ItemCard = (function () {
       right.appendChild(Global.el("span", { class: "item-badge item-badge-accent", text: recipient }));
     }
 
-    const domain = item.url ? Global.domainFromUrl(item.url) : null;
+    // The first link is the primary one: its site shows on the row (and it is
+    // the one a preview is fetched for); "+N" says there are more inside.
+    const primary = item.links && item.links.length ? item.links[0] : null;
+    const domain = primary ? Global.domainFromUrl(primary.url) : null;
     if (domain) {
       const domainLink = Global.el("a", {
         class: "item-badge item-badge-domain",
-        href: item.url,
+        href: primary.url,
         target: "_blank",
         rel: "noopener noreferrer",
         text: domain,
@@ -188,6 +192,15 @@ const ItemCard = (function () {
       domainLink.addEventListener("click", (e) => e.stopPropagation());
       domainLink.addEventListener("keydown", (e) => e.stopPropagation());
       right.appendChild(domainLink);
+      if (item.links.length > 1) {
+        right.appendChild(
+          Global.el("span", {
+            class: "item-badge item-badge-muted item-badge-more-links",
+            title: `${item.links.length} links`,
+            text: `+${item.links.length - 1}`,
+          })
+        );
+      }
     }
 
     if (item.priority && !item.done) {
@@ -256,10 +269,12 @@ const ItemCard = (function () {
     add("Who is it for?", item.recipient ? text(contactName(item.recipient)) : null);
     add("Priority", item.priority ? text(ctx.list.priority_labels[item.priority - 1]) : null);
     add("Description", item.description ? text(item.description) : null);
-    add(
-      "URL",
-      item.url ? Global.el("a", { class: "readonly-value", href: item.url, target: "_blank", rel: "noopener noreferrer", text: item.url }) : null
-    );
+    for (const link of item.links || []) {
+      add(
+        link.label || "Link",
+        Global.el("a", { class: "readonly-value", href: link.url, target: "_blank", rel: "noopener noreferrer", text: link.url })
+      );
+    }
     add("Needed by", item.needed_by ? text(formatLongDate(Global.toISODate(item.needed_by))) : null);
     add("Progress", item.progress ? text(`${item.progress}%`) : null);
     if (!fields.children.length) fields.appendChild(Global.el("p", { class: "preview-empty", text: "No more details." }));
@@ -285,8 +300,19 @@ const ItemCard = (function () {
     const scrapeHost = Global.el("div");
     function renderScrape() {
       scrapeHost.replaceChildren();
-      if (item.url) scrapeHost.appendChild(buildScrapeSection(card, item, ctx));
+      if (item.links && item.links.length) scrapeHost.appendChild(buildScrapeSection(card, item, ctx));
     }
+
+    // The links save themselves, like progress (see buildLinksEditor), one
+    // after another through this queue.
+    const linksQueue = createSaveQueue();
+    const linksEditor = buildLinksEditor(item, {
+      queue: linksQueue,
+      onSaved() {
+        refreshSummary(card, item, ctx);
+        renderScrape();
+      },
+    });
 
     // Steps of 10 rather than free entry. Dragging fills the row live ("input"
     // fires continuously); the value is saved on its own when you let go
@@ -327,6 +353,10 @@ const ItemCard = (function () {
 
     if (inline) {
       for (const def of defs) {
+        if (def.custom) {
+          fields.appendChild(Global.el("div", { class: "field field-links" }, [Global.el("label", { text: def.label }), linksEditor]));
+          continue;
+        }
         const field = Global.inlineEdit({
           type: def.type,
           value: def.get(item),
@@ -344,16 +374,17 @@ const ItemCard = (function () {
               return def.get(updated);
             }
             refreshSummary(card, item, ctx);
-            if (def.key === "url") renderScrape();
             return def.get(updated);
           },
         });
         fields.appendChild(Global.el("div", { class: "field" }, [Global.el("label", { text: def.label }), field]));
       }
     } else {
-      const inputs = Object.fromEntries(defs.map((def) => [def.key, formInput(def, def.get(item))]));
+      const fieldDefs = defs.filter((def) => !def.custom);
+      const inputs = Object.fromEntries(fieldDefs.map((def) => [def.key, formInput(def, def.get(item))]));
       for (const def of defs) {
-        fields.appendChild(Global.el("div", { class: "field" }, [Global.el("label", { text: def.label }), inputs[def.key]]));
+        const control = def.custom ? linksEditor : inputs[def.key];
+        fields.appendChild(Global.el("div", { class: def.custom ? "field field-links" : "field" }, [Global.el("label", { text: def.label }), control]));
       }
       saveBtn = Global.el("button", {
         type: "button",
@@ -366,7 +397,10 @@ const ItemCard = (function () {
             return;
           }
           try {
-            const body = Object.fromEntries(defs.map((def) => [def.key, def.toApi(readFormInput(def, inputs[def.key]))]));
+            // A link being edited saves itself as you leave its field; let
+            // that finish first so the card isn't rebuilt from older data.
+            await linksQueue.settled();
+            const body = Object.fromEntries(fieldDefs.map((def) => [def.key, def.toApi(readFormInput(def, inputs[def.key]))]));
             const updated = await patchItem(item, body);
             if (reloadedAfterSave(updated, name)) return;
             if (updated.priority !== item.priority && ctx.list.sort_mode === "priority") {
@@ -416,6 +450,218 @@ const ItemCard = (function () {
     return wrap;
   }
 
+  // --- links ---
+  //
+  // An item has any number of links, each an address plus an optional label
+  // saying what it is. The label is picked from the person's own list of link
+  // labels (the Link Labels page) so it can't be mistyped, and "Add new
+  // label..." in the dropdown adds one to that list on the spot. The first
+  // link is the primary one (previewed, and shown on the collapsed row); drag
+  // the handle to change which that is.
+
+  let linkLabels = [];
+  let linkLabelsLoading = null;
+
+  // The person's own label names, in their order. Pages call this once before
+  // building cards; a failure just leaves the dropdown with fewer choices.
+  function loadLinkLabels() {
+    if (!linkLabelsLoading) {
+      linkLabelsLoading = Global.fetchJSON(LINK_LABELS_API)
+        .then((labels) => {
+          linkLabels = labels.map((l) => l.name);
+        })
+        .catch((err) => console.error("Failed to load link labels", err));
+    }
+    return linkLabelsLoading;
+  }
+
+  // Runs saves one at a time, in order, so a quick second edit can't be
+  // overtaken by the first; settled() waits for whatever is in flight.
+  function createSaveQueue() {
+    let tail = Promise.resolve();
+    return {
+      run(task) {
+        const result = tail.then(task);
+        tail = result.catch(() => {});
+        return result;
+      },
+      settled() {
+        return tail;
+      },
+    };
+  }
+
+  const WEB_ADDRESS = /^https?:\/\/\S+$/i;
+  const ADD_LABEL = "__add__";
+
+  // The options for one link's dropdown: no label, then the person's labels,
+  // then the link's own current label if it isn't one of them (a collaborator's
+  // wording, or one since deleted) so it doesn't silently vanish on edit.
+  function fillLabelOptions(select, current) {
+    select.replaceChildren(Global.el("option", { value: "", text: "No label" }));
+    const names = current && !linkLabels.includes(current) ? [...linkLabels, current] : linkLabels;
+    for (const name of names) select.appendChild(Global.el("option", { value: name, text: name }));
+    select.appendChild(Global.el("option", { value: ADD_LABEL, text: "Add new label..." }));
+    select.value = current || "";
+  }
+
+  function buildLinksEditor(item, { queue, onSaved }) {
+    const wrap = Global.el("div", { class: "links-editor" });
+    const rows = Global.el("div", { class: "link-rows" });
+    let saved = JSON.stringify((item.links || []).map((l) => [l.label || null, l.url]));
+
+    // What the rows hold now: complete rows only (a row with no address yet is
+    // just a place to type, not a link).
+    function collect() {
+      const links = [];
+      for (const row of rows.querySelectorAll(".link-row")) {
+        const url = row.querySelector(".link-url").value.trim();
+        if (!url) continue;
+        links.push({ label: row.querySelector(".link-label").value || null, url });
+      }
+      return links;
+    }
+
+    function commit() {
+      const links = collect();
+      if (links.some((l) => !WEB_ADDRESS.test(l.url))) {
+        Global.showMessage("A link must be a web address starting with http:// or https://", "error");
+        return Promise.resolve();
+      }
+      const signature = JSON.stringify(links.map((l) => [l.label, l.url]));
+      if (signature === saved) return Promise.resolve();
+      return queue.run(async () => {
+        try {
+          const updated = await patchItem(item, { links });
+          item.links = updated.links;
+          item.url = updated.url;
+          // A different primary link voids the preview fetched for the old one.
+          item.scrape_status = updated.scrape_status;
+          item.scraped_title = updated.scraped_title;
+          item.scraped_description = updated.scraped_description;
+          item.scraped_image_url = updated.scraped_image_url;
+          item.scrape_error = updated.scrape_error;
+          saved = JSON.stringify(updated.links.map((l) => [l.label || null, l.url]));
+          onSaved();
+        } catch (err) {
+          Global.showMessage(err.message, "error");
+        }
+      });
+    }
+
+    async function addLabel(name) {
+      const existing = linkLabels.find((n) => n.toLowerCase() === name.toLowerCase());
+      if (existing) return existing;
+      try {
+        const created = await Global.fetchJSON(LINK_LABELS_API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        linkLabels.push(created.name);
+        return created.name;
+      } catch (err) {
+        Global.showMessage(err.message, "error");
+        return null;
+      }
+    }
+
+    function rowElement(link) {
+      const handle = Global.el("span", { class: "link-drag-handle", "aria-label": "Drag to reorder", text: "⋮⋮" });
+      const select = Global.el("select", { class: "link-label", "aria-label": "What this link is" });
+      fillLabelOptions(select, link.label || "");
+      const urlInput = Global.el("input", {
+        type: "url",
+        class: "link-url",
+        placeholder: "https://...",
+        maxlength: "2000",
+        "aria-label": "Link address",
+      });
+      urlInput.value = link.url || "";
+      const removeBtn = Global.el("button", { type: "button", class: "link-remove", "aria-label": "Remove link", text: "×" });
+      const row = Global.el("div", { class: "link-row" }, [handle, select, urlInput, removeBtn]);
+
+      let lastLabel = select.value;
+      select.addEventListener("change", () => {
+        if (select.value !== ADD_LABEL) {
+          lastLabel = select.value;
+          commit();
+          return;
+        }
+        // Swap the dropdown for a small "name it" form until it's done.
+        const nameInput = Global.el("input", { type: "text", class: "link-new-label", placeholder: "New label", maxlength: "40", "aria-label": "New label" });
+        const addBtn = Global.el("button", { type: "button", class: "save-btn", text: "Add" });
+        const cancelBtn = Global.el("button", { type: "button", class: "link-cancel", text: "Cancel" });
+        const form = Global.el("span", { class: "link-new-label-form" }, [nameInput, addBtn, cancelBtn]);
+        select.classList.add("hidden");
+        select.after(form);
+        nameInput.focus();
+        const finish = (name) => {
+          form.remove();
+          select.classList.remove("hidden");
+          fillLabelOptions(select, name || lastLabel);
+          lastLabel = select.value;
+          if (name) commit();
+        };
+        const submit = async () => {
+          const typed = nameInput.value.trim();
+          if (!typed) return finish(null);
+          finish(await addLabel(typed));
+        };
+        addBtn.addEventListener("click", submit);
+        cancelBtn.addEventListener("click", () => finish(null));
+        nameInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            submit();
+          } else if (e.key === "Escape") {
+            finish(null);
+          }
+        });
+      });
+      urlInput.addEventListener("change", commit);
+      urlInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          urlInput.blur();
+        }
+      });
+      removeBtn.addEventListener("click", () => {
+        row.remove();
+        commit();
+      });
+      return row;
+    }
+
+    for (const link of item.links || []) rows.appendChild(rowElement(link));
+
+    const addBtn = Global.el("button", {
+      type: "button",
+      class: "link-add",
+      text: "+ Add link",
+      onclick: () => {
+        const row = rowElement({ label: "", url: "" });
+        rows.appendChild(row);
+        row.querySelector(".link-url").focus();
+      },
+    });
+
+    if (typeof Sortable !== "undefined") {
+      Sortable.create(rows, {
+        handle: ".link-drag-handle",
+        draggable: ".link-row",
+        animation: 150,
+        forceFallback: true,
+        onEnd(evt) {
+          if (evt.oldIndex !== evt.newIndex) commit();
+        },
+      });
+    }
+
+    wrap.append(rows, addBtn);
+    return wrap;
+  }
+
   function buildScrapeSection(card, item, ctx) {
     const section = Global.el("div", { class: "scrape-section" });
 
@@ -462,5 +708,5 @@ const ItemCard = (function () {
     return Global.el("div", { class: "scrape-note", text: "" });
   }
 
-  return { create, contactName };
+  return { create, contactName, loadLinkLabels };
 })();

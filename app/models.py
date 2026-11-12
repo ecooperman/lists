@@ -202,7 +202,6 @@ class Item(Base):
     recipient_id = Column(Integer, ForeignKey("contacts.id"), nullable=True)
     name = Column(String, nullable=False)
     description = Column(String, nullable=True)
-    url = Column(String, nullable=True)
     needed_by = Column(DateTime, nullable=True)
 
     done = Column(Boolean, nullable=False, default=False)
@@ -229,3 +228,47 @@ class Item(Base):
 
     list = relationship("ItemList", back_populates="items")
     recipient = relationship("Contact", back_populates="items")
+    # The item's links in the order they were arranged; the first is the
+    # primary one (what gets previewed and shown on the collapsed row).
+    links = relationship(
+        "ItemLink", back_populates="item", cascade="all, delete-orphan", order_by="ItemLink.position, ItemLink.id"
+    )
+
+    @property
+    def url(self):
+        """The primary link's address (the first one), for the preview fetch
+        and for anything that still wants a single URL."""
+        return self.links[0].url if self.links else None
+
+
+class ItemLink(Base):
+    """One link on an item: an address plus an optional label saying what it
+    is ("Menu", "Reviews"). The label is plain text copied onto the link - not
+    a pointer into anyone's label list (see LinkLabel) - so it reads the same
+    to everyone the list is shared with, whatever happens to that list later."""
+
+    __tablename__ = "item_links"
+
+    id = Column(Integer, primary_key=True)
+    item_id = Column(Integer, ForeignKey("items.id"), nullable=False, index=True)
+    label = Column(String, nullable=True)
+    url = Column(String, nullable=False)
+    # Order within the item, 0 first.
+    position = Column(Integer, nullable=False, default=0, server_default="0")
+
+    item = relationship("Item", back_populates="links")
+
+
+class LinkLabel(Base):
+    """A label a person keeps in their own list of link labels (a dropdown
+    on the item's links, like categories are for lists). Private to them:
+    picking one copies its text onto the link. Names are unique per person,
+    case-insensitively (see crud.link_label_name_taken)."""
+
+    __tablename__ = "link_labels"
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_link_labels_owner_id_name"),)
+
+    id = Column(Integer, primary_key=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String, nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0, server_default="0")

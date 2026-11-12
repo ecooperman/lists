@@ -2,8 +2,9 @@
 
 A small local app for keeping any number of named lists. Each list has a
 name and a purpose ("Gifts", "Movies to watch", ...) and its own items; every
-list has the same item structure - name, description, a source URL (e.g. a
-product page), a date you need it by, who it's for, and a done checkbox.
+list has the same item structure - name, description, any number of links (each
+an address with an optional label such as "Menu" or "Reviews"), a date you need
+it by, who it's for, and a done checkbox.
 
 (This started life as the `gifts` app - the existing gift items live on in a
 list called "Gifts". The app's port is still `8030` from then, and the DB
@@ -49,7 +50,7 @@ pre-accounts data). `GET /api/me` says who you are.
   another app may still want them - and deletes nothing, so *Restore* puts it all
   back. *Delete account data* is a separate step, offered only for someone already
   removed: it erases the lists they own (for everyone they were shared with), their
-  items, contacts, categories, their place on other people's lists and the requests
+  items and their links, contacts, categories, link labels, their place on other people's lists and the requests
   they made, behind a confirmation that spells out the counts. The email row stays,
   removed, so signing in again can't hand them a fresh account. Administrators can't
   be removed or deleted.
@@ -211,6 +212,17 @@ Category endpoints (labels a list can belong to, managed on `/categories.html`):
 - `POST /api/categories/reorder` - body `{"ordered_ids": [...]}`
 - `DELETE /api/categories/{id}` - 409s while any list still uses it
 
+Link label endpoints (your own choices for labelling an item's links, managed on
+`/link-labels.html`; private to you):
+
+- `GET /api/link-labels` - all of them in their manual order
+- `POST /api/link-labels` - create one (`name`, up to 40 characters; 409 if you
+  already have one with that name, ignoring case)
+- `PATCH /api/link-labels/{id}` - rename
+- `POST /api/link-labels/reorder` - body `{"ordered_ids": [...]}`
+- `DELETE /api/link-labels/{id}` - always allowed: links keep their own copy of the
+  label's text, so deleting or renaming one here changes no link
+
 Item endpoints (acting on one existing item):
 
 - `GET /api/items/{id}` - fetch one item
@@ -219,8 +231,17 @@ Item endpoints (acting on one existing item):
   none) and `list_id` (moves the item to the end of another list; it can't be
   cleared - every item belongs to exactly one list)
 - `DELETE /api/items/{id}` - delete an item
-- `POST /api/items/{id}/scrape` - (re-)run the scraper for the item's URL and
-  persist the result onto the item
+- `POST /api/items/{id}/scrape` - (re-)run the scraper for the item's first link
+  (400 if it has none) and persist the result onto the item
+
+An item's links are `links`: a list of `{"label": "Menu" or null, "url": "https://..."}`
+in order, up to 20, on create and in `PATCH`. Sending `links` replaces the whole set
+(`[]` clears it); leaving it out changes nothing. Only `http://` and `https://`
+addresses are accepted (the address ends up as a clickable link for everyone the list
+is shared with), labels are up to 40 characters and a blank one means no label. The
+first link is the primary one. Responses also carry `url`, the first link's address
+(`null` with no links), for anything that still wants a single URL; it is read-only
+and a `url` in a request is ignored.
 
 Contact endpoints (the "who is it for" list, managed on `/contacts.html`):
 
@@ -342,9 +363,21 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
   the list's settings are on its own page),
   `/list.html?id=N` is one list's items (the same `page.html?id=N` pattern
   trip-planning uses), `/contacts.html` manages contacts and
-  `/categories.html` manages categories. Editing,
+  `/categories.html` manages categories, `/link-labels.html` manages link labels. Editing,
   locking and deleting a list is the "Edit list" button on that list's own
   page; "Import items" is next to it.
+- An item's links live in `item_links` (address, optional label, position). The
+  label is plain text copied onto the link, not a pointer into anyone's label list:
+  a shared list is read by people who don't have your Link Labels page, and
+  renaming or deleting a label there must not change what they see. The page is
+  just each person's own dropdown choices (`link_labels`, unique per person ignoring
+  case, drag order), modeled on categories; "Add new label..." in the dropdown adds
+  to it on the spot, and a link whose label isn't in your list (an editor's own
+  wording, a label since deleted) still shows it. The first link is the primary
+  one: its site shows on the collapsed row (with "+N" for the others) and it is the
+  one "Fetch preview" fetches; drag the handle to change which that is. Making a
+  different link the first one discards the fetched preview (it was of the old one).
+  Links save themselves as you edit them, like progress, not with the Save button.
 - Categories (name, color, dark/light text, a drag order) are modeled on
   trip-planning's and time-management's, except a list has at most one. Set a
   list's from the dropdown inside its expanded card on the index (saves when
@@ -370,10 +403,10 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
 - Import is two steps - paste, "Preview" (shows exactly what will be created),
   then "Import N items" - so a bad paste never writes anything.
 - Only `name` is required on an item - everything else (recipient,
-  description, URL, needed-by date) is optional and can be filled in later.
+  description, links, needed-by date) is optional and can be filled in later.
 - Items are collapsed-by-default accordion cards - the same pattern as the
   jobs admin page in time-management (`jobs.html`/`jobs.js`): a single-line
-  summary (name, recipient, source domain, date) that expands in place into
+  summary (name, recipient, first link's site, date) that expands in place into
   the full edit form, rather than a separate view/edit mode or a modal. The
   edit form's "List" dropdown moves the item to another list.
 - Editing has two modes, chosen per device. With a mouse
@@ -428,7 +461,7 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
   `first_name` is required on a contact; `last_name`, `email`, and `address`
   are optional. A contact can't be deleted while an item still references
   them (409, mirroring the category-in-use check in time-management).
-- The "Fetch preview" button only appears when an item has a URL, and calls
+- The "Fetch preview" button only appears when an item has a link, and calls
   `POST /api/items/{id}/scrape`. It can be re-run any time (e.g. after a
   transient failure) via "Re-fetch preview", and lives inside the expanded
   card alongside the scraped preview (if any).

@@ -394,7 +394,7 @@ function initAddItemForm() {
       recipient_id: form.recipient_id.value ? Number(form.recipient_id.value) : null,
       priority: form.priority.value ? Number(form.priority.value) : null,
       description: form.description.value.trim() || null,
-      url: form.url.value.trim() || null,
+      links: form.url.value.trim() ? [{ label: null, url: form.url.value.trim() }] : [],
       needed_by: Global.dateInputToISO(form.needed_by.value),
     };
     try {
@@ -487,6 +487,7 @@ async function init() {
     return;
   }
   await loadContacts().catch((err) => console.error("Failed to load contacts", err));
+  await ItemCard.loadLinkLabels();
   await loadItems().catch((err) => console.error("Failed to load items", err));
 }
 

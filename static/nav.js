@@ -10,6 +10,7 @@ Global.buildNav([
   { href: "/", icon: "list", label: "Lists", active: onListsPage },
   { href: "/contacts.html", icon: "person", label: "Contacts", active: location.pathname === "/contacts.html" },
   { href: "/categories.html", icon: "tag", label: "Categories", active: location.pathname === "/categories.html" },
+  { href: "/link-labels.html", icon: "sliders", label: "Link labels", active: location.pathname === "/link-labels.html" },
   { icon: "refresh", label: "Refresh", onclick: () => location.reload() },
 ]);
 

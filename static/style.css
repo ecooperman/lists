@@ -641,3 +641,99 @@
   padding: 4px 6px;
 }
 
+
+/* --- an item's links (item-card.js buildLinksEditor) --- */
+
+.links-editor {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.link-rows {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.link-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.link-row .link-label {
+  width: 140px;
+  flex-shrink: 0;
+}
+
+.link-row .link-url,
+.link-row .link-new-label-form {
+  flex: 1;
+  min-width: 0;
+}
+
+.link-new-label-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.link-new-label-form .link-new-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.link-drag-handle {
+  flex-shrink: 0;
+  cursor: grab;
+  color: var(--muted);
+  letter-spacing: -3px;
+  user-select: none;
+  touch-action: none;
+}
+
+.link-remove,
+.link-cancel,
+.link-add {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.link-remove {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.link-remove:hover,
+.link-cancel:hover,
+.link-add:hover {
+  color: var(--text);
+}
+
+@media (max-width: 480px) {
+  /* Label above the address rather than squeezing both onto one line. */
+  .link-row {
+    flex-wrap: wrap;
+  }
+
+  .link-row .link-label {
+    width: auto;
+    flex: 1;
+  }
+
+  .link-row .link-url {
+    flex-basis: 100%;
+    order: 5;
+  }
+}
+
+/* The links editor needs the full row, not half of the two-column grid. */
+.item-fields .field-links {
+  grid-column: 1 / -1;
+}

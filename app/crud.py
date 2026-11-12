@@ -3,7 +3,7 @@ from typing import Optional
 
 from sqlalchemy import case, func
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from . import config, models, schemas
 
@@ -117,6 +117,7 @@ def delete_user_data(db: Session, user: models.User) -> None:
     have people let in go too (the people already let in keep their accounts).
     Their place on other people's lists goes; those lists are untouched."""
     for db_list in db.query(models.ItemList).filter(models.ItemList.owner_id == user.id).all():
+        _delete_links_of_list_items(db, db_list.id)
         db.query(models.Item).filter(models.Item.list_id == db_list.id).delete()
         db.query(models.Invite).filter(
             models.Invite.list_id == db_list.id, models.Invite.status != models.INVITE_APPROVED
@@ -139,6 +140,7 @@ def delete_user_data(db: Session, user: models.User) -> None:
         )
     db.query(models.Contact).filter(models.Contact.owner_id == user.id).delete()
     db.query(models.Category).filter(models.Category.owner_id == user.id).delete()
+    db.query(models.LinkLabel).filter(models.LinkLabel.owner_id == user.id).delete()
     db.commit()
 
 
@@ -210,6 +212,87 @@ def get_list_contacts(db: Session, list_id: int):
         .order_by(models.Contact.first_name, models.Contact.last_name)
         .all()
     )
+
+
+def _delete_links_of_list_items(db: Session, list_id: int) -> None:
+    """Items are removed in bulk (no ORM cascade), so their links go first."""
+    item_ids = db.query(models.Item.id).filter(models.Item.list_id == list_id)
+    db.query(models.ItemLink).filter(models.ItemLink.item_id.in_(item_ids)).delete(synchronize_session=False)
+
+
+# --- link labels ---
+#
+# A person's own list of labels for the links on items (see models.LinkLabel);
+# the same shape as categories, minus the colors.
+
+
+def get_link_labels(db: Session, owner_id: int):
+    return (
+        db.query(models.LinkLabel)
+        .filter(models.LinkLabel.owner_id == owner_id)
+        .order_by(models.LinkLabel.sort_order, models.LinkLabel.id)
+        .all()
+    )
+
+
+def get_link_label(db: Session, owner_id: int, label_id: int):
+    return (
+        db.query(models.LinkLabel)
+        .filter(models.LinkLabel.owner_id == owner_id, models.LinkLabel.id == label_id)
+        .first()
+    )
+
+
+def link_label_name_taken(db: Session, owner_id: int, name: str, exclude_id: Optional[int] = None) -> bool:
+    query = db.query(models.LinkLabel).filter(
+        models.LinkLabel.owner_id == owner_id, func.lower(models.LinkLabel.name) == name.strip().lower()
+    )
+    if exclude_id is not None:
+        query = query.filter(models.LinkLabel.id != exclude_id)
+    return query.first() is not None
+
+
+def create_link_label(db: Session, owner_id: int, label: schemas.LinkLabelCreate):
+    top = db.query(func.max(models.LinkLabel.sort_order)).filter(models.LinkLabel.owner_id == owner_id).scalar() or 0
+    db_label = models.LinkLabel(owner_id=owner_id, name=label.name.strip(), sort_order=top + 10)
+    db.add(db_label)
+    db.commit()
+    db.refresh(db_label)
+    return db_label
+
+
+def update_link_label(db: Session, owner_id: int, label_id: int, updates: schemas.LinkLabelUpdate):
+    db_label = get_link_label(db, owner_id, label_id)
+    if db_label is None:
+        return None
+    if updates.name is not None:
+        db_label.name = updates.name.strip()
+    db.commit()
+    db.refresh(db_label)
+    return db_label
+
+
+def reorder_link_labels(db: Session, owner_id: int, ordered_ids):
+    by_id = {
+        label.id: label
+        for label in db.query(models.LinkLabel).filter(models.LinkLabel.owner_id == owner_id, models.LinkLabel.id.in_(ordered_ids))
+    }
+    for index, label_id in enumerate(ordered_ids):
+        if label_id in by_id:  # a stale (or someone else's) id is skipped, not an error
+            by_id[label_id].sort_order = (index + 1) * 10
+    db.commit()
+    return get_link_labels(db, owner_id)
+
+
+def delete_link_label(db: Session, owner_id: int, label_id: int) -> bool:
+    """Always allowed when it exists: links carry their own copy of the text,
+    so deleting a label from your list leaves every link as it was."""
+    db_label = get_link_label(db, owner_id, label_id)
+    if db_label is None:
+        return False
+    db.delete(db_label)
+    db.commit()
+    return True
 
 
 # --- categories ---
@@ -416,6 +499,7 @@ def delete_list(db: Session, member: models.ListMember, force: bool = False):
     item_count = db.query(func.count(models.Item.id)).filter(models.Item.list_id == db_list.id).scalar()
     if item_count and not force:
         return "in_use", 0
+    _delete_links_of_list_items(db, db_list.id)
     deleted = db.query(models.Item).filter(models.Item.list_id == db_list.id).delete()
     # Unfinished invite requests go with the list; approved ones stay (the
     # ORM nulls their list_id) because the person was let in and still counts
@@ -674,7 +758,7 @@ def get_items(db: Session, list_id: int):
     order += [models.Item.sort_order, models.Item.id]
     return (
         db.query(models.Item)
-        .options(joinedload(models.Item.recipient))
+        .options(joinedload(models.Item.recipient), selectinload(models.Item.links))
         .filter(models.Item.list_id == list_id)
         .order_by(*order)
         .all()
@@ -689,14 +773,24 @@ def _next_sort_order(db: Session, list_id: int) -> int:
 def get_item(db: Session, item_id: int):
     return (
         db.query(models.Item)
-        .options(joinedload(models.Item.recipient))
+        .options(joinedload(models.Item.recipient), selectinload(models.Item.links))
         .filter(models.Item.id == item_id)
         .first()
     )
 
 
+def _links_from(links) -> list:
+    """ItemLink rows, in the order given, from the links a request sent."""
+    return [models.ItemLink(label=link.label, url=link.url, position=position) for position, link in enumerate(links)]
+
+
 def create_item(db: Session, list_id: int, item: schemas.ItemCreate):
-    db_item = models.Item(list_id=list_id, sort_order=_next_sort_order(db, list_id), **item.model_dump())
+    db_item = models.Item(
+        list_id=list_id,
+        sort_order=_next_sort_order(db, list_id),
+        links=_links_from(item.links),
+        **item.model_dump(exclude={"links"}),
+    )
     db.add(db_item)
     db.commit()
     db.refresh(db_item)
@@ -733,6 +827,20 @@ def reorder_items(db: Session, list_id: int, item_ids) -> bool:
 
 def update_item(db: Session, db_item: models.Item, updates: schemas.ItemUpdate):
     fields = updates.model_dump(exclude_unset=True)
+    if "links" in fields:
+        fields.pop("links")
+        if updates.links is not None:
+            first_before = db_item.url
+            db_item.links = _links_from(updates.links)
+            if (updates.links[0].url if updates.links else None) != first_before:
+                # The preview belongs to the primary link; a different one
+                # makes what was fetched for the old one misleading.
+                db_item.scrape_status = models.ScrapeStatus.not_started
+                db_item.scraped_title = None
+                db_item.scraped_description = None
+                db_item.scraped_image_url = None
+                db_item.scraped_at = None
+                db_item.scrape_error = None
     if "done" in fields:
         # Track when an item was checked off so the UI can show it, and
         # clear it again if someone un-checks the box.
