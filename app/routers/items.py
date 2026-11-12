@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import crud, models, schemas
+from .. import crud, models, schemas, sendcopy
 from ..access import ItemAccess, check_role, item_access
 from ..auth import current_user
 from ..deps import get_db
@@ -40,6 +40,12 @@ def update_item(
     if updates.recipient_id is not None and not crud.contact_usable_for_list(db, updates.recipient_id, target_list_id):
         raise HTTPException(status_code=404, detail="Contact not found")
     return crud.update_item(db, access.item, updates)
+
+
+@router.post("/{item_id}/copy", response_model=schemas.CopyResult)
+def copy_item(options: schemas.CopyOptions, access: ItemAccess = Depends(item_access(models.ROLE_VIEW))):
+    """Just this item as a copy to paste elsewhere (no list heading)."""
+    return sendcopy.render(None, [access.item], options, access.member.list.priority_labels)
 
 
 @router.delete("/{item_id}")

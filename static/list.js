@@ -260,6 +260,26 @@ function initSharing() {
   });
 }
 
+// --- send a copy (anyone who can see the list, including view-only members) ---
+
+function initSendCopy() {
+  const box = document.getElementById("send-copy-box");
+  const showBtn = document.getElementById("show-send-copy");
+  let panel = null;
+
+  function close() {
+    box.classList.add("hidden");
+    showBtn.classList.remove("hidden");
+  }
+
+  showBtn.addEventListener("click", () => {
+    box.classList.remove("hidden");
+    showBtn.classList.add("hidden");
+    if (!panel) panel = SendCopy.mount(document.getElementById("send-copy-mount"), { listId, onClose: close });
+    panel.refresh();
+  });
+}
+
 // --- import pasted notes as items ---
 
 function initImportForm() {
@@ -476,6 +496,7 @@ async function init() {
   initEditListForm();
   initSharing();
   initImportForm();
+  initSendCopy();
   initSortMode();
   initSortable();
   initAddItemForm();

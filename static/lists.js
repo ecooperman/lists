@@ -274,8 +274,24 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
     shareRow = Global.el("div", { class: "list-share" }, [toggle, box]);
   }
 
+  // Anyone who can see a list can copy it (to the clipboard), so unlike Share
+  // this is offered for every role.
+  let copyPanel = null;
+  const copyMount = Global.el("div");
+  const copyBox = Global.el("div", { class: "add-card hidden" }, [copyMount]);
+  const copyToggle = Global.el("button", { type: "button", class: "secondary-btn", "aria-expanded": "false", text: "Send a copy" });
+  copyToggle.addEventListener("click", () => {
+    const open = copyBox.classList.toggle("hidden") === false;
+    copyToggle.setAttribute("aria-expanded", String(open));
+    copyToggle.textContent = open ? "Hide copy" : "Send a copy";
+    if (!open) return;
+    if (!copyPanel) copyPanel = SendCopy.mount(copyMount, { listId: itemList.id });
+    copyPanel.refresh();
+  });
+  const copyRow = Global.el("div", { class: "list-share" }, [copyToggle, copyBox]);
+
   const details = Global.el("div", { class: "item-details hidden" }, [
-    Global.el("div", { class: "item-details-inner" }, [categoryRow, shareRow, preview]),
+    Global.el("div", { class: "item-details-inner" }, [categoryRow, shareRow, copyRow, preview]),
   ]);
 
   // The whole row opens the list: a transparent link stretched over it, so

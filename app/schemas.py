@@ -104,6 +104,28 @@ class CategoryReorderRequest(BaseModel):
     ordered_ids: List[int]
 
 
+class CopyOptions(BaseModel):
+    """What goes into a copy of a list or item (see app/sendcopy.py). The item's
+    name is always there; each of these is an optional addition."""
+
+    links: bool = True
+    description: bool = False
+    needed_by: bool = False
+    priority: bool = False
+    progress: bool = False
+    recipient: bool = False  # the contact's name only, never their email or address
+    style: Literal["numbered", "bulleted", "checkboxes", "plain"] = "bulleted"
+    done: Literal["show", "hide", "strike"] = "show"
+    order: Literal["list", "priority"] = "list"  # "list" = as the list itself shows them
+    heading: bool = True  # the list's name above the items (lists only)
+
+
+class CopyResult(BaseModel):
+    text: str  # plain text, for messages and notes
+    html: str  # the rich version, for email and documents
+    count: int  # how many items it holds
+
+
 class LinkLabelCreate(BaseModel):
     name: str = Field(min_length=1, max_length=40)
 

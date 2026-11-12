@@ -34,6 +34,7 @@
     <div class="list-tools">
       <button id="show-edit-list" type="button" class="secondary-btn">Edit list</button>
       <button id="show-import" type="button" class="secondary-btn">Import items</button>
+      <button id="show-send-copy" type="button" class="secondary-btn">Send a copy</button>
       <button id="leave-list" type="button" class="secondary-btn hidden">Leave list</button>
     </div>
 
@@ -71,6 +72,10 @@
         <button type="button" id="cancel-edit-list" class="cancel-btn">Cancel</button>
       </div>
     </form>
+
+    <div id="send-copy-box" class="add-card hidden">
+      <div id="send-copy-mount"></div>
+    </div>
 
     <form id="import-form" class="add-card hidden">
       <div class="field">
@@ -144,6 +149,7 @@
   <script src="{{ shared_assets_base }}/icons.js"></script>
   <script src="nav.js"></script>
   <script src="common.js"></script>
+  <script src="send-copy.js"></script>
   <script src="item-card.js"></script>
   <script src="{{ shared_assets_base }}/access.js"></script>
   <script src="list.js"></script>

@@ -203,6 +203,18 @@ line break from copy/paste) and joined onto its name with a space. Text before
 the first dash, blank lines, and `---` separators are ignored (see
 `app/importer.py`).
 
+Send a copy (a one-time snapshot to paste somewhere, as opposed to sharing access):
+
+- `POST /api/lists/{id}/copy` - the list as `{"text", "html", "count"}`, for anyone
+  who can see it, view-only members included. The body chooses what goes in; every
+  field is optional: `links` (default true), `description`, `needed_by`, `priority`,
+  `progress`, `recipient` (the contact's name only), `heading` (the list's name
+  above; default true), `style` (`bulleted` default, `numbered`, `checkboxes`,
+  `plain`), `done` (`show` default, `hide`, `strike`: drawn struck through in the
+  rich version and marked "(done)" in the text) and `order` (`list` default, as the
+  list shows them, or `priority`, highest first with done items last). The item's
+  name is always there. Nothing about who the list is shared with is ever included.
+
 Category endpoints (labels a list can belong to, managed on `/categories.html`):
 
 - `GET /api/categories` - all categories in their manual order
@@ -231,6 +243,8 @@ Item endpoints (acting on one existing item):
   none) and `list_id` (moves the item to the end of another list; it can't be
   cleared - every item belongs to exactly one list)
 - `DELETE /api/items/{id}` - delete an item
+- `POST /api/items/{id}/copy` - this item as a copy to paste elsewhere (see "Send a
+  copy" below), for anyone who can see the list
 - `POST /api/items/{id}/scrape` - (re-)run the scraper for the item's first link
   (400 if it has none) and persist the result onto the item
 
@@ -380,6 +394,12 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
   On a mouse each label and address reads as text until clicked, like the other
   fields (on touch they are plain inputs); links save themselves as you edit them,
   like progress, not with the Save button.
+- "Send a copy" is the list page's button (and each list's expanded card on the
+  index) for anyone who can see the list; an item's "Copy links" button copies just
+  its name and links. The text is made by the server (`app/sendcopy.py`) so an
+  emailed copy can later match it exactly; the browser puts both the plain text and
+  the rich version (labels become clickable links) on the clipboard, and remembers
+  the last choices per list on that device only. Email delivery is not built yet.
 - Categories (name, color, dark/light text, a drag order) are modeled on
   trip-planning's and time-management's, except a list has at most one. Set a
   list's from the dropdown inside its expanded card on the index (saves when

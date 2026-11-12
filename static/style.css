@@ -765,3 +765,65 @@
 .item-fields .field-links {
   grid-column: 1 / -1;
 }
+
+/* --- Send a copy (send-copy.js) --- */
+
+.send-copy-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin-bottom: 12px;
+}
+
+.send-copy-include {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, auto));
+  gap: 4px 20px;
+}
+
+.send-copy-include legend {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  padding: 0 4px;
+}
+
+.send-copy-check {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.send-copy-choose {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+}
+
+.send-copy-preview {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow: auto;
+}
+
+/* In an item's expanded card the copy button sits with Delete/Save. */
+.item-copy-links[hidden],
+.item-copy-links.hidden {
+  display: none;
+}

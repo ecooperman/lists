@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import config, crud, models, notify, schemas
+from .. import config, crud, models, notify, schemas, sendcopy
 from ..access import check_role, list_access
 from ..auth import current_user, is_admin
 from ..deps import get_db
@@ -238,6 +238,22 @@ def list_contacts(member: models.ListMember = Depends(list_access(models.ROLE_VI
 @router.get("/{list_id}/items", response_model=List[schemas.Item])
 def list_items(member: models.ListMember = Depends(list_access(models.ROLE_VIEW)), db: Session = Depends(get_db)):
     return crud.get_items(db, member.list_id)
+
+
+@router.post("/{list_id}/copy", response_model=schemas.CopyResult)
+def copy_list(
+    options: schemas.CopyOptions,
+    member: models.ListMember = Depends(list_access(models.ROLE_VIEW)),
+    db: Session = Depends(get_db),
+):
+    """The list as a copy to paste elsewhere (Send a copy). Anyone who can see
+    the list can make one, view-only members included: they could retype it."""
+    return sendcopy.render(
+        member.list.name if options.heading else None,
+        crud.get_items(db, member.list_id),
+        options,
+        member.list.priority_labels,
+    )
 
 
 @router.post("/{list_id}/items", response_model=schemas.Item)

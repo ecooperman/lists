@@ -279,6 +279,7 @@ const ItemCard = (function () {
     add("Progress", item.progress ? text(`${item.progress}%`) : null);
     if (!fields.children.length) fields.appendChild(Global.el("p", { class: "preview-empty", text: "No more details." }));
     wrap.appendChild(fields);
+    if (item.links && item.links.length) wrap.appendChild(Global.el("div", { class: "item-actions" }, [copyLinksButton(item)]));
     if (item.scrape_status === "success") wrap.appendChild(Global.el("div", { class: "scrape-section" }, [renderScrapeStatus(item)]));
     return wrap;
   }
@@ -305,6 +306,8 @@ const ItemCard = (function () {
 
     // The links save themselves, like progress (see buildLinksEditor), one
     // after another through this queue.
+    // One click copies the item's name and links for pasting to someone.
+    const copyBtn = copyLinksButton(item);
     const linksQueue = createSaveQueue();
     const linksEditor = buildLinksEditor(item, {
       queue: linksQueue,
@@ -312,6 +315,7 @@ const ItemCard = (function () {
       onSaved() {
         refreshSummary(card, item, ctx);
         renderScrape();
+        copyBtn.classList.toggle("hidden", !item.links.length);
       },
     });
 
@@ -446,9 +450,19 @@ const ItemCard = (function () {
     });
 
     actions.appendChild(deleteBtn);
+    actions.appendChild(copyBtn);
     if (saveBtn) actions.appendChild(saveBtn);
     wrap.appendChild(actions);
     return wrap;
+  }
+
+  // The "Copy links" button on an item (hidden while it has none): copies the
+  // item's name and links to the clipboard (send-copy.js), view-only members too.
+  function copyLinksButton(item) {
+    const button = Global.el("button", { type: "button", class: "secondary-btn item-copy-links", text: "Copy links" });
+    button.classList.toggle("hidden", !(item.links && item.links.length));
+    button.addEventListener("click", () => SendCopy.copyItemLinks(item, button));
+    return button;
   }
 
   // --- links ---
