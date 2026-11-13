@@ -7,6 +7,20 @@
 :root {
   --accent: #b8863b;
   --accent-bg: #f5ebd8;
+  --badge-accent-text: #6b4f28;
+  --priority-3: #9a4a00;
+  --priority-3-bg: #fde3c8;
+}
+
+/* Lists keeps its own amber accent in the dark theme too, lifted to read on a
+   dark page, with dark text on filled buttons. */
+:root[data-theme="dark"] {
+  --accent: #d4a24f;
+  --accent-bg: rgba(212, 162, 79, 0.15);
+  --accent-text: #1a1203;
+  --badge-accent-text: #d4a24f;
+  --priority-3: #f0a35e;
+  --priority-3-bg: rgba(240, 163, 94, 0.15);
 }
 
 /* The shared .item-badge-accent uses var(--accent) as both text and
@@ -15,7 +29,7 @@
    brown for the badge text specifically (recipient pill on each item's
    summary row), background still follows --accent-bg above. */
 .item-badge-accent {
-  color: #6b4f28;
+  color: var(--badge-accent-text);
 }
 
 /* --- item progress: --progress (set per card by list.js, 0-100%) fills the
@@ -151,23 +165,23 @@
 }
 
 .item-badge-priority.priority-2 {
-  color: #8a5a00;
-  background: #fdf0d2;
+  color: var(--warning);
+  background: var(--warning-bg);
 }
 
 .item-badge-priority.priority-3 {
-  color: #9a4a00;
-  background: #fde3c8;
+  color: var(--priority-3);
+  background: var(--priority-3-bg);
 }
 
 .item-badge-priority.priority-4 {
-  color: #b3261e;
-  background: #fbe9e7;
+  color: var(--danger);
+  background: var(--danger-bg);
 }
 
 .item-badge-priority.priority-5 {
-  color: #fff;
-  background: #b3261e;
+  color: var(--surface);
+  background: var(--danger);
 }
 
 .priority-label-inputs {
@@ -266,6 +280,11 @@
   display: flex;
   gap: 8px;
   margin-bottom: 12px;
+}
+
+/* The new look offers these as the Share and "..." menus (list.js, initToolbarMenus). */
+html[data-ui="v2"] .list-tools > button {
+  display: none;
 }
 
 #list-locked {
@@ -409,7 +428,7 @@
   max-width: 140px;
   padding: 3px 9px;
   border-radius: 10px;
-  background: var(--cat-color, #d7d3c9);
+  background: var(--cat-color, var(--border-strong));
   color: #2b2b2b;
   font-size: 11px;
   font-weight: 600;
@@ -499,9 +518,9 @@
 }
 
 .contact-row button.danger {
-  color: #b3261e;
-  border-color: #b3261e;
-  background: #fbe9e7;
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--danger-bg);
 }
 
 .new-contact-row {
@@ -545,7 +564,7 @@
 }
 
 .list-row:hover {
-  background-color: rgba(0, 0, 0, 0.025);
+  background-color: var(--hover);
 }
 
 /* Transparent link stretched over the row. Everything with its own job sits

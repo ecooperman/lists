@@ -288,6 +288,49 @@ function initSendCopy() {
   });
 }
 
+// --- the page's actions as two menus (the new look) ---
+//
+// The row of buttons above (Edit list, Import items, Send a copy, Leave list)
+// stays in the page - it owns the panels and the who-may-do-what rules - but
+// the new look hides it and offers the same things as a Share menu and a "..."
+// menu. Each menu item just clicks the matching button, and is only offered
+// while that button is (applyRole hides what the person can't do).
+
+function initToolbarMenus() {
+  if (document.documentElement.getAttribute("data-ui") !== "v2") return;
+  const tools = document.querySelector(".list-tools");
+  const press = (id) => () => document.getElementById(id).click();
+  const offered = (id) => !document.getElementById(id).classList.contains("hidden");
+
+  const share = Global.buildMenu({
+    icon: "share",
+    label: "Share",
+    align: "left",
+    items: () => [
+      isOwner() && {
+        label: "Share access...",
+        icon: "users",
+        onclick: () => {
+          if (offered("show-edit-list")) press("show-edit-list")();
+          document.getElementById("access-mount").scrollIntoView({ behavior: "smooth", block: "center" });
+        },
+      },
+      { label: "Send a copy...", icon: "mail", onclick: press("show-send-copy") },
+    ],
+  });
+  const more = Global.buildMenu({
+    icon: "more",
+    ariaLabel: "More actions",
+    items: () => [
+      offered("show-edit-list") && { label: "Edit list", icon: "edit", onclick: press("show-edit-list") },
+      offered("show-import") && { label: "Import items", icon: "plus", onclick: press("show-import") },
+      (offered("show-edit-list") || offered("show-import")) && offered("leave-list") && { separator: true },
+      offered("leave-list") && { label: "Leave list", icon: "trash", danger: true, onclick: press("leave-list") },
+    ],
+  });
+  tools.append(share, more);
+}
+
 // --- import pasted notes as items ---
 
 function initImportForm() {
@@ -505,6 +548,7 @@ async function init() {
   initSharing();
   initImportForm();
   initSendCopy();
+  initToolbarMenus();
   initSortMode();
   initSortable();
   initAddItemForm();

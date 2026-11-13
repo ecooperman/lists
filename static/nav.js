@@ -5,50 +5,38 @@
 
 // An individual list's page (/list.html?id=N) counts as part of "Lists".
 const onListsPage = location.pathname === "/" || location.pathname === "/list.html";
+const here = (path) => location.pathname === path;
 
-Global.buildNav([
-  { href: "/", icon: "list", label: "Lists", active: onListsPage },
-  { href: "/contacts.html", icon: "person", label: "Contacts", active: location.pathname === "/contacts.html" },
-  { href: "/categories.html", icon: "tag", label: "Categories", active: location.pathname === "/categories.html" },
-  { href: "/link-labels.html", icon: "sliders", label: "Link labels", active: location.pathname === "/link-labels.html" },
-  { icon: "refresh", label: "Refresh", onclick: () => location.reload() },
-]);
+// The nav is built straight away, then rebuilt once we know who is signed in:
+// everyone gets Invites (to ask for someone to be let in); the administrator
+// also sees how many requests are waiting (kept current by invites.js) and
+// gets the Users page. Groups only show in the sidebar layout.
+function buildListsNav(me) {
+  const admin = !!(me && me.is_admin);
+  const items = [
+    { href: "/", icon: "list", label: "Lists", active: onListsPage },
+    { href: "/contacts.html", icon: "person", label: "Contacts", active: here("/contacts.html") },
+    { href: "/categories.html", icon: "tag", label: "Categories", active: here("/categories.html"), group: "Setup" },
+    { href: "/link-labels.html", icon: "sliders", label: "Link labels", active: here("/link-labels.html"), group: "Setup" },
+  ];
+  if (me) {
+    items.push({
+      href: "/invites.html",
+      icon: "settings",
+      label: "Invites",
+      active: here("/invites.html"),
+      group: "Access",
+      badge: admin ? { id: "nav-invite-count", count: me.pending_invites || 0 } : null,
+    });
+  }
+  if (admin) items.push({ href: "/users.html", icon: "person", label: "Users", active: here("/users.html"), group: "Access" });
+  items.push({ icon: "refresh", label: "Refresh", onclick: () => location.reload() });
+  Global.buildNav(items);
+}
 
-// Everyone gets the Invites page (to ask for someone to be let in); the administrator
-// also sees how many requests are waiting for them (the badge is kept current by
-// invites.js).
+buildListsNav(null);
 Global.currentUser().then((me) => {
-  const nav = document.querySelector(".app-nav");
-  if (!me || !nav) return;
-  const waiting = me.is_admin ? me.pending_invites || 0 : 0;
-  const content = [Global.el("span", { class: "app-nav-icon", "data-icon": "settings", "aria-hidden": "true" }), "Invites"];
-  if (me.is_admin) {
-    content.push(
-      Global.el("span", {
-        id: "nav-invite-count",
-        class: "item-badge item-badge-accent nav-count" + (waiting ? "" : " hidden"),
-        text: String(waiting),
-      })
-    );
-  }
-  const link = Global.el(
-    "a",
-    { href: "/invites.html", class: "app-nav-link" + (location.pathname === "/invites.html" ? " active" : "") },
-    content
-  );
-  nav.insertBefore(link, nav.lastElementChild); // ahead of Refresh, which stays last
-  applyIcons(link);
-
-  // The administrator also manages who has access (users.html).
-  if (me.is_admin) {
-    const users = Global.el(
-      "a",
-      { href: "/users.html", class: "app-nav-link" + (location.pathname === "/users.html" ? " active" : "") },
-      [Global.el("span", { class: "app-nav-icon", "data-icon": "person", "aria-hidden": "true" }), "Users"]
-    );
-    nav.insertBefore(users, nav.lastElementChild);
-    applyIcons(users);
-  }
+  if (me) buildListsNav(me);
 });
 
 // Who's signed in, with a Log out link, in the page header (shared-assets).
