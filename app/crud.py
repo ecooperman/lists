@@ -553,10 +553,45 @@ def add_member(db: Session, list_id: int, user: models.User, role: str):
     if db.query(models.ListMember).filter_by(list_id=list_id, user_id=user.id).first() is not None:
         return None
     member = models.ListMember(list_id=list_id, user_id=user.id, role=role, sort_order=_next_list_order(db, user.id))
+    member.category_id = _category_for_new_member(db, list_id, user.id)
     db.add(member)
     db.commit()
     db.refresh(member)
     return member
+
+
+def _category_for_new_member(db: Session, list_id: int, user_id: int):
+    """Which of the new member's own categories to file a freshly shared list
+    under: the one its owner filed it in, copied over (name and colours) if
+    they have no category of that name yet, else their own same-named one
+    (their colour kept). A one-time copy: nothing is linked afterwards, so
+    changing or deleting it never touches the owner's. None if the owner
+    hasn't filed the list."""
+    owner = (
+        db.query(models.ListMember)
+        .join(models.ItemList, models.ItemList.id == models.ListMember.list_id)
+        .filter(models.ListMember.list_id == list_id, models.ListMember.user_id == models.ItemList.owner_id)
+        .first()
+    )
+    if owner is None or owner.category is None:
+        return None
+    theirs = (
+        db.query(models.Category)
+        .filter(models.Category.owner_id == user_id, func.lower(models.Category.name) == owner.category.name.strip().lower())
+        .first()
+    )
+    if theirs is None:
+        top = db.query(func.max(models.Category.sort_order)).filter(models.Category.owner_id == user_id).scalar() or 0
+        theirs = models.Category(
+            owner_id=user_id,
+            name=owner.category.name,
+            color=owner.category.color,
+            text_color=owner.category.text_color,
+            sort_order=top + 10,
+        )
+        db.add(theirs)
+        db.flush()
+    return theirs.id
 
 
 def get_member(db: Session, list_id: int, user_id: int):

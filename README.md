@@ -119,7 +119,12 @@ pre-accounts data). `GET /api/me` says who you are.
 - **Each person arranges lists themselves:** a list's position on your index and
   the category you filed it under belong to *you* (`list_members`), so sharing
   never rearranges anyone else's page. Categories are private to their creator,
-  and names are unique per person.
+  and names are unique per person. When someone is *given* access (added, or an
+  invite approved), the category the owner filed the list under is copied once into
+  their own categories and the list is filed under it for them (their same-named
+  category is reused, keeping their colour); nothing stays linked, existing members
+  aren't backfilled, and unsharing then resharing copies it again
+  (`crud._category_for_new_member`).
 - **Contacts:** your address book is yours alone. A shared list offers its
   *owner's* contacts as "who is it for" - to everyone, as names only (no email
   or address, `GET /api/lists/{id}/contacts`). Moving an item to a list with a

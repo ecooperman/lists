@@ -268,6 +268,18 @@ def test_approving_lets_them_through_and_puts_them_on_the_list(alice, admin, sig
     assert admin.get("/api/me").json()["pending_invites"] == 0
 
 
+def test_an_approved_newcomer_gets_the_lists_category_copied_in(alice, admin, sign_in, allowed, sent):
+    cat = alice.post("/api/categories", {"name": "Gifts", "color": "#112233"}).json()
+    lst = make_list(alice)
+    alice.patch(f"/api/lists/{lst['id']}", {"category_id": cat["id"]})
+    invite = ask(alice, lst["id"], role="view").json()
+    assert admin.post(f"/api/admin/invites/{invite['id']}/approve").status_code == 200
+
+    newbie = sign_in(NEWBIE)
+    assert [c["name"] for c in newbie.get("/api/categories").json()] == ["Gifts"]
+    assert newbie.get(f"/api/lists/{lst['id']}").json()["category_id"] == newbie.get("/api/categories").json()[0]["id"]
+
+
 def test_declining_changes_nothing_in_cloudflare_or_the_list(alice, admin, sign_in, allowed, sent):
     lst = make_list(alice)
     invite = ask(alice, lst["id"]).json()

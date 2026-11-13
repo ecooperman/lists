@@ -233,6 +233,96 @@ def test_a_category_in_use_by_a_shared_list_cant_be_deleted(alice):
     assert alice.delete(f"/api/categories/{cat['id']}").status_code == 409
 
 
+# --- sharing a filed list copies the owner's category over, once -------------------
+
+
+def filed(owner, name="Gifts", color="#112233", text_color="light", list_name="Plans"):
+    cat = owner.post("/api/categories", {"name": name, "color": color, "text_color": text_color}).json()
+    lst = make_list(owner, list_name)
+    owner.patch(f"/api/lists/{lst['id']}", {"category_id": cat["id"]})
+    return lst, cat
+
+
+def categories_of(person):
+    return [(c["name"], c["color"], c["text_color"]) for c in person.get("/api/categories").json()]
+
+
+def category_name_of(person, list_id):
+    cats = {c["id"]: c["name"] for c in person.get("/api/categories").json()}
+    return cats.get(person.get(f"/api/lists/{list_id}").json()["category_id"])
+
+
+def test_sharing_a_filed_list_copies_the_category_to_the_new_member(alice, bob):
+    lst, _ = filed(alice)
+    share(alice, lst["id"], bob, "view")
+
+    assert categories_of(bob) == [("Gifts", "#112233", "light")]
+    assert category_name_of(bob, lst["id"]) == "Gifts"
+    assert categories_of(alice) == [("Gifts", "#112233", "light")]
+
+
+def test_the_copy_is_independent_of_the_owners_category(alice, bob):
+    lst, cat = filed(alice)
+    share(alice, lst["id"], bob, "edit")
+    bobs = bob.get("/api/categories").json()[0]
+
+    assert bob.patch(f"/api/categories/{bobs['id']}", {"name": "Mine", "color": "#ffffff"}).status_code == 200
+    assert categories_of(alice) == [("Gifts", "#112233", "light")]
+    alice.patch(f"/api/categories/{cat['id']}", {"name": "Renamed"})
+    assert [c[0] for c in categories_of(bob)] == ["Mine"]
+
+
+def test_a_same_named_category_they_already_have_is_reused_with_their_colour(alice, bob):
+    bob.post("/api/categories", {"name": "gifts", "color": "#abcdef"})
+    lst, _ = filed(alice)
+    share(alice, lst["id"], bob, "view")
+
+    assert categories_of(bob) == [("gifts", "#abcdef", "dark")]
+    assert category_name_of(bob, lst["id"]) == "gifts"
+
+
+def test_the_copy_goes_to_the_end_of_their_categories(alice, bob):
+    bob.post("/api/categories", {"name": "Work", "color": "#abcdef"})
+    lst, _ = filed(alice)
+    share(alice, lst["id"], bob, "view")
+    assert [c[0] for c in categories_of(bob)] == ["Work", "Gifts"]
+
+
+def test_an_unfiled_list_creates_nothing_for_the_new_member(alice, bob):
+    lst = make_list(alice)
+    share(alice, lst["id"], bob, "view")
+    assert categories_of(bob) == []
+    assert bob.get(f"/api/lists/{lst['id']}").json()["category_id"] is None
+
+
+def test_each_new_member_gets_their_own_copy(alice, bob, carol):
+    lst, _ = filed(alice)
+    share(alice, lst["id"], bob, "view")
+    share(alice, lst["id"], carol, "edit")
+    assert categories_of(bob) == categories_of(carol) == [("Gifts", "#112233", "light")]
+    assert bob.get("/api/categories").json()[0]["id"] != carol.get("/api/categories").json()[0]["id"]
+
+
+def test_what_the_owner_files_it_under_after_sharing_does_not_reach_members(alice, bob):
+    lst = make_list(alice)
+    share(alice, lst["id"], bob, "view")
+    cat = alice.post("/api/categories", {"name": "Later"}).json()
+    alice.patch(f"/api/lists/{lst['id']}", {"category_id": cat["id"]})
+    assert categories_of(bob) == []
+
+
+def test_unsharing_and_resharing_copies_it_again(alice, bob):
+    lst, _ = filed(alice)
+    added = share(alice, lst["id"], bob, "view")
+    assert alice.delete(f"/api/lists/{lst['id']}/members/{added['user_id']}").status_code == 200
+    assert bob.get(f"/api/lists/{lst['id']}").status_code == 404
+    bob_cat = bob.get("/api/categories").json()[0]
+    bob.delete(f"/api/categories/{bob_cat['id']}")  # they tidied their own away
+
+    share(alice, lst["id"], bob, "view")
+    assert category_name_of(bob, lst["id"]) == "Gifts"
+
+
 # --- contacts: a shared list uses its owner's address book ----------------------
 
 

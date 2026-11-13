@@ -3,6 +3,7 @@
 const LIST_ACCESS_HINT =
   "Add someone who already uses the app, or ask for a new person to be let in - an administrator approves each request. " +
   "Viewers can read this list; editors can also change its items. " +
+  "A person you add gets the category you filed it under copied into their own categories (they can change it freely; yours is never affected). " +
   "Only you can rename it, change who has access, lock it or delete it.";
 
 // Helpers shared by the lists index, a single list's page and the categories
