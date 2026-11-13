@@ -7,6 +7,7 @@ live here once. Only what the person ticked is included, and never anything
 about who the list is shared with or the owner's contacts beyond a name.
 """
 from html import escape
+from urllib.parse import urlsplit
 from typing import List, Optional
 
 from . import models, schemas
@@ -82,6 +83,16 @@ def _text(title: Optional[str], items, options, priority_labels) -> str:
     return f"{title}\n\n{body}" if title else body
 
 
+def _site_name(url: str) -> str:
+    """What to show for a link with no label in the rich version: the site
+    ("opentable.com"), since the address itself can run to several lines. The
+    plain text keeps the full address, and the link underneath is always it."""
+    host = (urlsplit(url).hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return host or url
+
+
 def _html_item(item: models.Item, rows, options) -> str:
     name = escape(item.name)
     if item.done and options.done == "strike":
@@ -93,7 +104,7 @@ def _html_item(item: models.Item, rows, options) -> str:
         if kind == "note":
             parts.append("<br>" + "<br>".join(escape(part) for part in value.splitlines() if part.strip()))
         elif kind == "link":
-            parts.append(f'<br><a href="{escape(value)}">{escape(label or value)}</a>')
+            parts.append(f'<br><a href="{escape(value)}">{escape(label or _site_name(value))}</a>')
         else:
             parts.append(f"<br>{escape(label)}: {escape(value)}")
     return "".join(parts)

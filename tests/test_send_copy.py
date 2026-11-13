@@ -152,8 +152,17 @@ def test_the_rich_version_links_the_label_or_the_address(alice):
     html = copy_list(alice, lst["id"])["html"]
     assert html.startswith("<h3>Portland</h3><ul>")
     assert '<a href="https://a.example/listing">Listing</a>' in html
-    assert '<a href="https://a.example/reviews">https://a.example/reviews</a>' in html
+    assert '<a href="https://a.example/reviews">a.example</a>' in html  # no label: the site, not the long address
     assert "<ol>" in copy_list(alice, lst["id"], style="numbered")["html"]
+
+
+def test_an_unlabelled_link_shows_the_site_in_the_rich_version_but_the_address_in_the_text(alice):
+    lst = make_list(alice, "Eat")
+    long = "https://www.opentable.com/booking/restref/availability?rid=1&lang=en-US&otSource=Restaurant%20website"
+    make_item(alice, lst["id"], "Kasama", links=[link(long)])
+    result = copy_list(alice, lst["id"])
+    assert f'<a href="{long.replace("&", "&amp;")}">opentable.com</a>' in result["html"]
+    assert long in result["text"]
 
 
 def test_everything_typed_by_people_is_escaped_in_the_rich_version(alice):
