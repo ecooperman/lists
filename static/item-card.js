@@ -614,7 +614,7 @@ const ItemCard = (function () {
       const row = Global.el("div", { class: "link-row" });
       row._link = { label: link.label || "", url: link.url || "" };
       const handle = Global.el("span", { class: "link-drag-handle", "aria-label": "Drag to reorder", text: "⋮⋮" });
-      const removeBtn = Global.el("button", { type: "button", class: "link-remove", "aria-label": "Remove link", text: "×" });
+      const removeBtn = Global.el("button", { type: "button", class: "link-remove", "aria-label": "Remove link", "data-btn-icon": "x", text: "×" });
 
       // Change one field and save; if that fails the field goes back to what it was.
       async function change(field, value) {
@@ -734,6 +734,7 @@ const ItemCard = (function () {
     const addBtn = Global.el("button", {
       type: "button",
       class: "link-add",
+      "data-btn-icon": "plus",
       text: "+ Add link",
       onclick: () => {
         const row = rowElement({ label: "", url: "" });
@@ -764,6 +765,7 @@ const ItemCard = (function () {
     const scrapeBtn = Global.el("button", {
       type: "button",
       class: "scrape-btn",
+      "data-btn-icon": "refresh",
       text: item.scrape_status === "not_started" ? "Fetch preview" : "Re-fetch preview",
       onclick: async (e) => {
         e.target.disabled = true;

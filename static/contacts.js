@@ -30,6 +30,7 @@ function contactRowElement(contact) {
   const saveBtn = document.createElement("button");
   saveBtn.type = "button";
   saveBtn.textContent = "Save";
+  saveBtn.dataset.btnIcon = "check";
   saveBtn.addEventListener("click", async () => {
     const firstName = firstNameInput.value.trim();
     if (!firstName) {
@@ -57,6 +58,7 @@ function contactRowElement(contact) {
   const deleteBtn = document.createElement("button");
   deleteBtn.type = "button";
   deleteBtn.textContent = "Delete";
+  deleteBtn.dataset.btnIcon = "trash";
   deleteBtn.className = "danger";
   deleteBtn.addEventListener("click", async () => {
     if (!confirm(`Delete contact "${contactDisplayName(contact)}"?`)) return;
