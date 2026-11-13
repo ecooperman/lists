@@ -356,3 +356,17 @@ def test_someone_on_the_list_is_reported_even_if_cloudflare_no_longer_lets_them_
     # Not "can't sign in yet", which would offer to invite someone already here.
     assert resp.status_code == 409
     assert "already on this list" in resp.json()["detail"]
+
+
+def test_a_category_can_be_made_from_just_a_name(alice):
+    """The category dropdowns create one on the spot, with no colour chosen: it gets
+    the neutral default and can be recoloured later on the Categories page."""
+    resp = alice.post("/api/categories", {"name": "Hobbies"})
+    assert resp.status_code == 200, resp.text
+    made = resp.json()
+    assert made["color"] == "#cbd5e1" and made["text_color"] == "dark"
+    assert alice.patch(f"/api/categories/{made['id']}", {"color": "#112233"}).json()["color"] == "#112233"
+    assert alice.post("/api/categories", {"name": "hobbies"}).status_code == 409  # still unique, any capitalisation
+    assert alice.post("/api/categories", {"name": ""}).status_code == 422
+    assert alice.post("/api/categories", {"name": "x" * 41}).status_code == 422
+    assert alice.post("/api/categories", {"name": "Bad", "color": "red"}).status_code == 422  # a given colour is still checked

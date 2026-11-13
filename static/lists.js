@@ -212,14 +212,14 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
   const preview = Global.el("div", { class: "list-preview" });
 
   // Category: a plain dropdown that saves when you pick (safe on touch too,
-  // unlike click-to-edit text). Hidden until at least one category exists.
-  const categorySelect = Global.el(
-    "select",
-    { "aria-label": "Category" },
-    [Global.el("option", { value: "", text: "No category" }), ...categories.map((c) => Global.el("option", { value: String(c.id), text: c.name }))]
-  );
-  categorySelect.value = itemList.category_id ? String(itemList.category_id) : "";
-  categorySelect.addEventListener("change", async () => {
+  // unlike click-to-edit text). A new category can be made from it.
+  const categorySelect = Global.el("select", { "aria-label": "Category" });
+  fillCategorySelect(categorySelect, categories, itemList.category_id);
+
+  // Files this list under the chosen category (or none); `created` when the
+  // category was only just made from the dropdown, which every other card's
+  // dropdown and the filter at the top then need to learn about.
+  async function saveCategory(created = false) {
     const previous = itemList.category_id ? String(itemList.category_id) : "";
     try {
       const updated = await Global.fetchJSON(`/api/lists/${itemList.id}`, {
@@ -231,16 +231,29 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
       // Grouped by category, or filtered: the list may now belong under a
       // different heading (or not match the filter), so re-render - keeping
       // this card open. Otherwise just swap the pill in place.
-      if (isGrouped() || categoryFilter.length) renderLists({ reopenId: itemList.id });
+      if (created || isGrouped() || categoryFilter.length) renderLists({ reopenId: itemList.id });
       else setCategoryPill(slot, itemList);
     } catch (err) {
       categorySelect.value = previous;
+      categorySelect.dataset.chosen = previous;
       Global.showMessage(err.message, "error");
     }
+  }
+  categorySelect.addEventListener("change", () => {
+    if (categorySelect.value === ADD_CATEGORY) {
+      askForCategory(categorySelect, categories, (category) => {
+        if (!category) return;
+        categoriesById[category.id] = category;
+        buildCategoryFilter(); // the filter at the top lists categories too
+        saveCategory(true);
+      });
+    } else {
+      categorySelect.dataset.chosen = categorySelect.value;
+      saveCategory();
+    }
   });
-  const categoryRow = categories.length
-    ? Global.el("div", { class: "list-category-row" }, [Global.el("label", { text: "Category" }), categorySelect])
-    : null;
+  // Always offered, even before the first category exists: it can be made here.
+  const categoryRow = Global.el("div", { class: "list-category-row" }, [Global.el("label", { text: "Category" }), categorySelect]);
 
   // Owners can give people access right here, without opening the list and its
   // Edit form: a Share button that reveals the same "Who has access" panel

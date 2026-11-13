@@ -169,11 +169,7 @@ function initEditListForm() {
     form.purpose.value = currentList.purpose || "";
     fillLabelInputs();
     form.locked.checked = currentList.locked;
-    form.category_id.replaceChildren(
-      Global.el("option", { value: "", text: "No category" }),
-      ...categories.map((c) => Global.el("option", { value: String(c.id), text: c.name }))
-    );
-    form.category_id.value = currentList.category_id ? String(currentList.category_id) : "";
+    fillCategorySelect(form.category_id, categories, currentList.category_id);
     syncDeleteButton();
     form.classList.remove("hidden");
     showBtn.classList.add("hidden");
@@ -181,6 +177,18 @@ function initEditListForm() {
   });
 
   document.getElementById("cancel-edit-list").addEventListener("click", close);
+
+  // "Add new category..." in the dropdown: make it here, then it is already
+  // chosen for the Save below.
+  form.category_id.addEventListener("change", () => {
+    if (form.category_id.value === ADD_CATEGORY) {
+      askForCategory(form.category_id, categories, (category) => {
+        if (category) categoriesById[category.id] = category;
+      });
+    } else {
+      form.category_id.dataset.chosen = form.category_id.value;
+    }
+  });
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();

@@ -550,39 +550,13 @@ const ItemCard = (function () {
 
   // Swaps `anchor` (the label control) for a small "name it" form until it is
   // answered; done(name) gets the label to use, or null if it was cancelled.
+  // (The form itself is shared-assets' Global.askForName.)
   function askForLabel(anchor, done) {
-    const nameInput = Global.el("input", { type: "text", class: "link-new-label", placeholder: "New label", maxlength: "40", "aria-label": "New label" });
-    const addBtn = Global.el("button", { type: "button", class: "save-btn", text: "Add" });
-    const cancelBtn = Global.el("button", { type: "button", class: "link-cancel", text: "Cancel" });
-    const form = Global.el("span", { class: "link-new-label-form" }, [nameInput, addBtn, cancelBtn]);
-    anchor.classList.add("hidden");
-    anchor.after(form);
-    nameInput.focus();
-    let finished = false;
-    const finish = (name) => {
-      if (finished) return;
-      finished = true;
-      form.remove();
-      anchor.classList.remove("hidden");
-      done(name);
-    };
-    let adding = false;
-    const submit = async () => {
-      if (adding) return;
-      adding = true;
-      const typed = nameInput.value.trim();
-      finish(typed ? await addLabel(typed) : null);
-    };
-    addBtn.addEventListener("click", submit);
-    cancelBtn.addEventListener("click", () => finish(null));
-    nameInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        submit();
-      } else if (e.key === "Escape") {
-        finish(null);
-      }
-    });
+    Global.askForName(
+      anchor,
+      { placeholder: "New label", formClass: "link-new-label-form", inputClass: "link-new-label", cancelClass: "link-cancel", submit: addLabel },
+      done
+    );
   }
 
   // The links field. On a mouse, each label and address reads as plain text

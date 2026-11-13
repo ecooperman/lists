@@ -227,8 +227,10 @@ Send a copy (a one-time snapshot to paste somewhere, as opposed to sharing acces
 Category endpoints (labels a list can belong to, managed on `/categories.html`):
 
 - `GET /api/categories` - all categories in their manual order
-- `POST /api/categories` - create one (`name`, `color` as `#rrggbb`, and
-  `text_color` `dark`/`light`); appended to the end, 409 on a duplicate name
+- `POST /api/categories` - create one (`name`; `color` as `#rrggbb`, default a neutral
+  grey `#cbd5e1`, and `text_color` `dark`/`light`, default dark - so the category
+  dropdowns can create one from just a name, to be recoloured on the Categories
+  page); appended to the end, 409 on a duplicate name
 - `PATCH /api/categories/{id}` - rename / recolor
 - `POST /api/categories/reorder` - body `{"ordered_ids": [...]}`
 - `DELETE /api/categories/{id}` - 409s while any list still uses it

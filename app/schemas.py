@@ -76,9 +76,14 @@ class UserAdd(BaseModel):
     email: str = Field(min_length=3, max_length=254)
 
 
+# What a category made from a dropdown (name only) looks like until it is
+# recoloured on the Categories page: a light neutral grey, which dark text reads on.
+DEFAULT_CATEGORY_COLOR = "#cbd5e1"
+
+
 class CategoryBase(BaseModel):
     name: str = Field(min_length=1, max_length=40)
-    color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
+    color: str = Field(default=DEFAULT_CATEGORY_COLOR, pattern=r"^#[0-9a-fA-F]{6}$")
     text_color: Literal["dark", "light"] = "dark"
 
 
