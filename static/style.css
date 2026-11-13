@@ -385,6 +385,11 @@ html[data-ui="v2"] .list-tools > button {
   min-width: 160px;
 }
 
+/* The card's Share menu sits at the end of the category row. */
+.list-category-row .menu-wrap {
+  margin-left: auto;
+}
+
 /* --- category headings on the grouped lists index --- */
 
 .category-heading {

@@ -255,56 +255,60 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
   // Always offered, even before the first category exists: it can be made here.
   const categoryRow = Global.el("div", { class: "list-category-row" }, [Global.el("label", { text: "Category" }), categorySelect]);
 
-  // Owners can give people access right here, without opening the list and its
-  // Edit form: a Share button that reveals the same "Who has access" panel
-  // (access.js) - loaded on first open, refreshed each time after.
-  let shareRow = null;
-  if (itemList.my_role === "owner") {
-    const panel = Global.el("div");
-    const box = Global.el("div", { class: "access-box hidden" }, [Global.el("label", { text: "Who has access" }), panel]);
-    const toggle = Global.el("button", { type: "button", class: "secondary-btn", "aria-expanded": "false", text: "Share" });
-    let access = null;
-    toggle.addEventListener("click", () => {
-      const open = box.classList.toggle("hidden") === false;
-      toggle.setAttribute("aria-expanded", String(open));
-      toggle.textContent = open ? "Hide access" : "Share";
-      if (!open) return;
-      if (!access) {
-        access = Access.mount(panel, {
-          api: `/api/lists/${itemList.id}`,
-          noun: "list",
-          name: () => itemList.name,
-          hint: LIST_ACCESS_HINT,
-          // Keep the header's "N people" badge true as people come and go.
-          onMembers(members) {
-            itemList.member_count = members.length;
-            setAccessBadge(accessSlot, itemList);
-          },
-        });
-      }
-      access.reload();
-    });
-    shareRow = Global.el("div", { class: "list-share" }, [toggle, box]);
+  // One Share menu per card (same as on the list page): "Share access..." (owners
+  // only) reveals the "Who has access" panel right here (access.js, loaded on first
+  // open, refreshed each time after); "Send a copy..." (any role) reveals the copy
+  // chooser. Choosing an open panel's item again hides it.
+  let access = null;
+  const accessPanel = Global.el("div");
+  const accessBox = Global.el("div", { class: "access-box hidden" }, [Global.el("label", { text: "Who has access" }), accessPanel]);
+  const accessRow = Global.el("div", { class: "list-share" }, [accessBox]);
+  function toggleAccess() {
+    const open = accessBox.classList.toggle("hidden") === false;
+    if (!open) return;
+    if (!access) {
+      access = Access.mount(accessPanel, {
+        api: `/api/lists/${itemList.id}`,
+        noun: "list",
+        name: () => itemList.name,
+        hint: LIST_ACCESS_HINT,
+        // Keep the header's "N people" badge true as people come and go.
+        onMembers(members) {
+          itemList.member_count = members.length;
+          setAccessBadge(accessSlot, itemList);
+        },
+      });
+    }
+    access.reload();
   }
 
-  // Anyone who can see a list can copy it (to the clipboard), so unlike Share
-  // this is offered for every role.
   let copyPanel = null;
   const copyMount = Global.el("div");
   const copyBox = Global.el("div", { class: "add-card hidden" }, [copyMount]);
-  const copyToggle = Global.el("button", { type: "button", class: "secondary-btn", "aria-expanded": "false", text: "Send a copy" });
-  copyToggle.addEventListener("click", () => {
+  const copyRow = Global.el("div", { class: "list-share" }, [copyBox]);
+  function toggleCopy() {
     const open = copyBox.classList.toggle("hidden") === false;
-    copyToggle.setAttribute("aria-expanded", String(open));
-    copyToggle.textContent = open ? "Hide copy" : "Send a copy";
     if (!open) return;
     if (!copyPanel) copyPanel = SendCopy.mount(copyMount, { listId: itemList.id });
     copyPanel.refresh();
+  }
+
+  const shareMenu = Global.buildMenu({
+    icon: "share",
+    label: "Share",
+    items: () => [
+      itemList.my_role === "owner" && {
+        label: accessBox.classList.contains("hidden") ? "Share access..." : "Hide access",
+        icon: "users",
+        onclick: toggleAccess,
+      },
+      { label: copyBox.classList.contains("hidden") ? "Send a copy..." : "Hide copy", icon: "mail", onclick: toggleCopy },
+    ],
   });
-  const copyRow = Global.el("div", { class: "list-share" }, [copyToggle, copyBox]);
+  categoryRow.appendChild(shareMenu);
 
   const details = Global.el("div", { class: "item-details hidden" }, [
-    Global.el("div", { class: "item-details-inner" }, [categoryRow, shareRow, copyRow, preview]),
+    Global.el("div", { class: "item-details-inner" }, [categoryRow, accessRow, copyRow, preview]),
   ]);
 
   // The whole row opens the list: a transparent link stretched over it, so
