@@ -220,3 +220,42 @@ def test_an_editor_can_sort_by_price_but_not_turn_tracking_on(alice, bob):
     plain = make_list(alice, "Plain")
     share(alice, plain["id"], bob, "edit")
     assert bob.patch(f"/api/lists/{plain['id']}", {"sort_mode": "price"}).status_code == 400
+
+
+# --- the total split by priority ---------------------------------------------------------
+
+
+def by_priority(person, list_id):
+    return [(b["priority"], b["total_cents"]) for b in person.get(f"/api/lists/{list_id}").json()["cost_by_priority"]]
+
+
+def test_the_total_is_split_by_priority_highest_first(alice):
+    lst = costed_list(alice)
+    lid = lst["id"]
+    make = lambda name, **body: alice.post(f"/api/lists/{lid}/items", {"name": name, **body}).json()
+    make("Bed", priority=3, estimate_cents=100_000, final_cents=90_000)  # final wins over the estimate
+    make("Lamp", priority=1, estimate_cents=2_000)
+    make("Desk", priority=3, estimate_cents=30_000)
+    make("Rug", estimate_cents=5_000)  # no priority
+    make("Mystery", priority=2)  # no price: adds nothing, so no line
+    body = alice.get(f"/api/lists/{lid}").json()
+    assert by_priority(alice, lid) == [(3, 120_000), (1, 2_000), (None, 5_000)]
+    assert sum(b["total_cents"] for b in body["cost_by_priority"]) == body["cost_total_cents"] == 127_000
+
+
+def test_the_split_follows_a_priority_change_and_a_list_not_tracking_costs_has_none(alice):
+    lst = costed_list(alice)
+    lid = lst["id"]
+    item = alice.post(f"/api/lists/{lid}/items", {"name": "Bed", "priority": 2, "estimate_cents": 500}).json()
+    assert by_priority(alice, lid) == [(2, 500)]
+    assert alice.patch(f"/api/items/{item['id']}", {"priority": None}).status_code == 200
+    assert by_priority(alice, lid) == [(None, 500)]
+    assert alice.patch(f"/api/lists/{lid}", {"track_costs": False}).json()["cost_by_priority"] == []
+
+
+def test_done_items_still_count_in_their_priority_line(alice):
+    lst = costed_list(alice)
+    lid = lst["id"]
+    item = alice.post(f"/api/lists/{lid}/items", {"name": "Bed", "priority": 4, "estimate_cents": 700}).json()
+    assert alice.patch(f"/api/items/{item['id']}", {"done": True}).status_code == 200
+    assert by_priority(alice, lid) == [(4, 700)]

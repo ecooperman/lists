@@ -196,8 +196,19 @@
   gap: 8px;
 }
 
-.priority-label-row input {
+.priority-label-row input[type="text"] {
   flex: 1;
+}
+
+.priority-show {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 .priority-label-level {
@@ -898,6 +909,53 @@ html[data-ui="v2"] .list-tools > button {
 
 .cost-summary.hidden {
   display: none;
+}
+
+/* With priorities: one line per priority, then the Total line. */
+.cost-summary-by-priority {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.cost-line {
+  display: flex;
+  align-items: baseline;
+  gap: 4px 16px;
+  flex-wrap: wrap;
+}
+
+.cost-line-label {
+  min-width: 120px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.cost-line-value {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-line-total {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+.cost-line-total .cost-line-label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.cost-line-total .cost-line-value {
+  font-size: 18px;
+  color: var(--accent);
+}
+
+.cost-line-extra {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .cost-stat {

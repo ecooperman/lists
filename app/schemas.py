@@ -191,6 +191,14 @@ class ItemListUpdate(BaseModel):
     # Exactly five labels for priority levels 1-5; a blank one falls back to
     # its default, and null resets all five.
     priority_labels: Optional[List[PriorityLabel]] = Field(default=None, min_length=5, max_length=5)
+    # Levels (1-5) this list does not offer in its priority pickers; [] shows all five.
+    # At least one must stay visible (checked in the router, where the body's shape is known).
+    hidden_priorities: Optional[List[Annotated[int, Field(ge=1, le=5)]]] = Field(default=None, max_length=5)
+
+
+class PriorityCost(BaseModel):
+    priority: Optional[int] = None  # 1-5, or null for items with no priority
+    total_cents: int
 
 
 class ItemList(ItemListBase):
@@ -200,6 +208,7 @@ class ItemList(ItemListBase):
     locked: bool
     sort_mode: SortMode
     priority_labels: List[str]
+    hidden_priorities: List[int] = []
     created_at: datetime
     # Not columns - crud.list_views() sets these on each row for the person
     # asking: where *they* have the list (position, category), what they can
@@ -219,6 +228,9 @@ class ItemList(ItemListBase):
     cost_total_cents: int = 0
     cost_bought_cents: int = 0
     unpriced_count: int = 0
+    # cost_total_cents split by priority level, highest level first (null = no priority last);
+    # levels that add up to nothing are left out, so these always sum to cost_total_cents.
+    cost_by_priority: List[PriorityCost] = []
 
 
 class Member(BaseModel):

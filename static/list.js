@@ -72,6 +72,8 @@ function populatePrioritySelect(select, selected) {
   select.innerHTML = "";
   select.appendChild(Global.el("option", { value: "", text: "None" }));
   currentList.priority_labels.forEach((label, i) => {
+    // Levels the list hides are not offered (the new-item form has no current level to keep).
+    if (currentList.hidden_priorities.includes(i + 1) && i + 1 !== selected) return;
     const option = Global.el("option", { value: String(i + 1), text: label });
     if (i + 1 === selected) option.selected = true;
     select.appendChild(option);
@@ -95,9 +97,11 @@ function renderListHeader() {
   document.title = `${currentList.name} - Lists`;
 }
 
-// The totals strip above the items of a list that tracks costs: what everything adds up to
-// (each item at its final cost, or its estimate until there is one), what is already bought
-// (done items), and what is still to buy.
+// The totals strip above the items of a list that tracks costs. Each item counts at its final
+// cost, or its estimate until there is one. When any priced item has a priority the strip is a
+// breakdown - one line per priority (highest first, "No priority" last), then a closing Total
+// line that also shows what is already bought (done items) and what is still to buy. Without
+// priorities it is just the three figures side by side.
 function renderCosts() {
   const box = document.getElementById("list-costs");
   box.classList.toggle("hidden", !currentList.track_costs);
@@ -109,10 +113,26 @@ function renderCosts() {
       Global.el("span", { class: "cost-stat-label", text: label }),
       Global.el("span", { class: "cost-stat-value", text: formatMoney(cents) }),
     ]);
-  const parts = [stat("Total", total, "cost-stat-total"), stat("Bought", bought), stat("Still to buy", total - bought)];
   const n = currentList.unpriced_count;
-  if (n) parts.push(Global.el("span", { class: "cost-unpriced", text: `${n} ${n === 1 ? "item has" : "items have"} no price yet` }));
-  box.replaceChildren(...parts);
+  const unpriced = n ? Global.el("span", { class: "cost-unpriced", text: `${n} ${n === 1 ? "item has" : "items have"} no price yet` }) : null;
+  const buckets = currentList.cost_by_priority || [];
+  box.classList.toggle("cost-summary-by-priority", buckets.some((b) => b.priority));
+  if (!buckets.some((b) => b.priority)) {
+    box.replaceChildren(...[stat("Total", total, "cost-stat-total"), stat("Bought", bought), stat("Still to buy", total - bought), unpriced].filter(Boolean));
+    return;
+  }
+  const line = (label, cents, extraClass = "") =>
+    Global.el("div", { class: `cost-line ${extraClass}`.trim() }, [
+      Global.el("span", { class: "cost-line-label", text: label }),
+      Global.el("span", { class: "cost-line-value", text: formatMoney(cents) }),
+    ]);
+  const lines = buckets.map((b) => line(b.priority ? currentList.priority_labels[b.priority - 1] : "No priority", b.total_cents));
+  const totalLine = line("Total", total, "cost-line-total");
+  totalLine.append(
+    Global.el("span", { class: "cost-line-extra", text: `${formatMoney(bought)} bought` }),
+    Global.el("span", { class: "cost-line-extra", text: `${formatMoney(total - bought)} still to buy` })
+  );
+  box.replaceChildren(...lines, totalLine, ...(unpriced ? [unpriced] : []));
 }
 
 // Re-read the list (the totals live on it) after a price or a done-tick changed them.
@@ -122,6 +142,7 @@ async function refreshTotals() {
     currentList.cost_total_cents = fresh.cost_total_cents;
     currentList.cost_bought_cents = fresh.cost_bought_cents;
     currentList.unpriced_count = fresh.unpriced_count;
+    currentList.cost_by_priority = fresh.cost_by_priority;
     currentList.item_count = fresh.item_count;
     renderCosts();
   } catch (err) {
@@ -182,6 +203,10 @@ function initEditListForm() {
         Global.el("div", { class: "priority-label-row" }, [
           Global.el("span", { class: "priority-label-level", text: String(i + 1) }),
           Global.el("input", { type: "text", maxlength: "30", value: label, "aria-label": `Priority level ${i + 1} label` }),
+          Global.el("label", { class: "priority-show", title: "Untick to leave this level out of the priority choices" }, [
+            Global.el("input", { type: "checkbox", checked: !currentList.hidden_priorities.includes(i + 1), "aria-label": `Show priority level ${i + 1}` }),
+            " Show",
+          ]),
         ])
       );
     });
@@ -192,12 +217,12 @@ function initEditListForm() {
       currentList = await Global.fetchJSON(LIST_API, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ priority_labels: null }),
+        body: JSON.stringify({ priority_labels: null, hidden_priorities: [] }),
       });
       fillLabelInputs();
       renderListHeader();
       loadItems();
-      Global.showMessage("Priority labels reset to the defaults.", "success");
+      Global.showMessage("Priority labels reset to the defaults, and every level is showing.", "success");
     } catch (err) {
       Global.showMessage(err.message, "error");
     }
@@ -244,7 +269,10 @@ function initEditListForm() {
           locked: form.locked.checked,
           track_costs: form.track_costs.checked,
           category_id: form.category_id.value ? Number(form.category_id.value) : null,
-          priority_labels: [...labelInputs.querySelectorAll("input")].map((input) => input.value.trim()),
+          priority_labels: [...labelInputs.querySelectorAll("input[type=text]")].map((input) => input.value.trim()),
+          hidden_priorities: [...labelInputs.querySelectorAll("input[type=checkbox]")]
+            .map((box, i) => (box.checked ? null : i + 1))
+            .filter(Boolean),
         }),
       });
       renderListHeader();

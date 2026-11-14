@@ -418,6 +418,21 @@ def list_views(db: Session, members):
         .filter(models.Item.list_id.in_(list_ids))
         .group_by(models.Item.list_id)
     }
+    # The same total split by priority level (None = items with no priority), only for the
+    # lists that track costs; levels that add up to nothing are left out.
+    by_priority = {}
+    tracked = [m.list_id for m in members if m.list.track_costs]
+    if tracked:
+        for list_id, priority, total in (
+            db.query(models.Item.list_id, models.Item.priority, func.coalesce(func.sum(cost), 0))
+            .filter(models.Item.list_id.in_(tracked))
+            .group_by(models.Item.list_id, models.Item.priority)
+        ):
+            if total:
+                by_priority.setdefault(list_id, []).append({"priority": priority, "total_cents": int(total)})
+    # Highest level first, no-priority last, so the breakdown reads most important to least.
+    for buckets in by_priority.values():
+        buckets.sort(key=lambda b: -(b["priority"] or 0))
     member_counts = dict(
         db.query(models.ListMember.list_id, func.count(models.ListMember.user_id))
         .filter(models.ListMember.list_id.in_(list_ids))
@@ -436,6 +451,7 @@ def list_views(db: Session, members):
         item_list.cost_total_cents, item_list.cost_bought_cents, item_list.unpriced_count = (
             costs.get(member.list_id, (0, 0, 0)) if item_list.track_costs else (0, 0, 0)
         )
+        item_list.cost_by_priority = by_priority.get(member.list_id, []) if item_list.track_costs else []
         views.append(item_list)
     return views
 

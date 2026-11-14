@@ -112,6 +112,11 @@ class ItemList(Base):
     # This list's own names for priority levels 1-5, or NULL for the defaults.
     # Read/write it through the priority_labels property below.
     _priority_labels = Column("priority_labels", JSON, nullable=True)
+    # Which of the five levels this list does not offer when you pick a priority (e.g. a
+    # shopping list that only wants three), or NULL for none. Hiding is only about the
+    # pickers: an item already at a hidden level keeps it and still shows its badge, and
+    # sorting is untouched. Read/write it through the hidden_priorities property below.
+    _hidden_priorities = Column("hidden_priorities", JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     items = relationship("Item", back_populates="list")
@@ -139,6 +144,16 @@ class ItemList(Base):
         if cleaned:
             cleaned = ["" if label == default else label for label, default in zip(cleaned, DEFAULT_PRIORITY_LABELS)]
         self._priority_labels = cleaned if cleaned and any(cleaned) else None
+
+    @property
+    def hidden_priorities(self):
+        """The hidden levels, as sorted numbers 1-5 (empty = every level is offered)."""
+        return sorted({n for n in (self._hidden_priorities or []) if n in range(1, 6)})
+
+    @hidden_priorities.setter
+    def hidden_priorities(self, value):
+        levels = sorted(set(value or []))
+        self._hidden_priorities = levels or None
 
 
 class ListMember(Base):

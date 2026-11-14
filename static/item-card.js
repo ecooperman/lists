@@ -46,9 +46,19 @@ const ItemCard = (function () {
   // One definition per editable item field, used by both ways of editing it
   // (see buildItemDetails). `get` reads the field off an item as the string an
   // input holds; `toApi` turns what the input holds into the PATCH value.
-  function itemFieldDefs(ctx) {
+  // The priority choices this list offers: the levels it has not hidden, plus the one the item
+  // already has (a hidden level on an existing item is kept, not silently dropped).
+  function priorityOptionsFor(ctx, current) {
+    const hidden = ctx.list.hidden_priorities || [];
+    const levels = ctx.list.priority_labels
+      .map((label, i) => ({ value: String(i + 1), label }))
+      .filter((o) => !hidden.includes(Number(o.value)) || Number(o.value) === current);
+    return [{ value: "", label: "None" }, ...levels];
+  }
+
+  function itemFieldDefs(ctx, item) {
     const contactOptions = [{ value: "", label: "Unassigned" }, ...ctx.contacts.map((c) => ({ value: String(c.id), label: contactName(c) }))];
-    const priorityOptions = [{ value: "", label: "None" }, ...ctx.list.priority_labels.map((label, i) => ({ value: String(i + 1), label }))];
+    const priorityOptions = priorityOptionsFor(ctx, item ? item.priority : null);
     const listOptions = ctx.lists.map((l) => ({ value: String(l.id), label: l.name }));
     return [
       { key: "name", label: "Name", type: "text", required: true, requiredMessage: "Name is required.", get: (it) => it.name, toApi: (v) => v },
@@ -325,7 +335,7 @@ const ItemCard = (function () {
   //    phone and blur-saves misfire when the keyboard dismisses.
   function buildItemDetails(card, item, ctx) {
     const wrap = Global.el("div", { class: "item-details-inner" });
-    const defs = itemFieldDefs(ctx);
+    const defs = itemFieldDefs(ctx, item);
     const inline = canInlineEdit();
 
     // The scrape preview is only shown while the item has a URL, so inline
@@ -418,6 +428,8 @@ const ItemCard = (function () {
                 return def.get(updated);
               }
               if (ctx.refreshTotals) ctx.refreshTotals();
+            } else if (def.key === "priority" && ctx.refreshTotals) {
+              ctx.refreshTotals(); // the by-priority lines of the totals strip move with it
             }
             refreshSummary(card, item, ctx);
             return def.get(updated);

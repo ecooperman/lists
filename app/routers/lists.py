@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/lists", tags=["lists"])
 
 # What a PATCH on a list may change, by who may change it. Everything else is
 # the list as everyone sees it; category_id is only this person's own filing.
-OWNER_FIELDS = {"name", "purpose", "locked", "priority_labels", "track_costs"}
+OWNER_FIELDS = {"name", "purpose", "locked", "priority_labels", "hidden_priorities", "track_costs"}
 EDITOR_FIELDS = {"sort_mode"}
 PERSONAL_FIELDS = {"category_id"}
 
@@ -57,6 +57,11 @@ def update_list(
         raise HTTPException(status_code=400, detail="sort_mode must be manual, priority or price")
     if "track_costs" in sent and updates.track_costs is None:
         raise HTTPException(status_code=400, detail="track_costs must be true or false")
+    if "hidden_priorities" in sent:
+        if updates.hidden_priorities is None:
+            raise HTTPException(status_code=400, detail="hidden_priorities must be a list of levels 1-5")
+        if len(set(updates.hidden_priorities)) >= 5:
+            raise HTTPException(status_code=400, detail="Leave at least one priority level showing")
     if updates.sort_mode == "price" and not (updates.track_costs if "track_costs" in sent else member.list.track_costs):
         raise HTTPException(status_code=400, detail="Turn on Track costs before sorting by price")
     if sent & OWNER_FIELDS:
