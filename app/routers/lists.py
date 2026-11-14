@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from .. import config, crud, models, notify, schemas, sendcopy
 from ..access import check_role, list_access
-from ..auth import current_user, is_admin
+from ..auth import current_user, is_admin, user_or_service
 from ..deps import get_db
 from ..importer import parse_dash_list
 from ..signin import can_sign_in, refuse_if_removed, valid_email
@@ -26,6 +26,28 @@ PERSONAL_FIELDS = {"category_id"}
 @router.get("", response_model=List[schemas.ItemList])
 def list_lists(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     return crud.get_lists(db, user.id)
+
+
+@router.get("/cost-summary", response_model=List[schemas.ListCostSummary])
+def lists_cost_summary(user: models.User = Depends(user_or_service), db: Session = Depends(get_db)):
+    """The lists this person can see that track costs, each as one lump sum (what is still to buy).
+    Read by the finances app with its service token, acting as the administrator; a signed-in person
+    gets their own. Declared before /{list_id} so "cost-summary" is not taken for a list id."""
+    return [
+        schemas.ListCostSummary(
+            id=row.id,
+            name=row.name,
+            total_cost_cents=row.cost_total_cents,
+            bought_cents=row.cost_bought_cents,
+            to_buy_cents=row.cost_total_cents - row.cost_bought_cents,
+            item_count=row.item_count,
+            open_count=row.open_count,
+            excluded_count=row.excluded_count,
+            unpriced_count=row.unpriced_count,
+        )
+        for row in crud.get_lists(db, user.id)
+        if row.track_costs
+    ]
 
 
 @router.post("", response_model=schemas.ItemList)

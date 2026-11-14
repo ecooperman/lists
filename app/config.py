@@ -35,6 +35,14 @@ ADOPT_LEGACY_ANY = not ADMIN_EMAILS and ENV == "production"
 if ENV != "production":
     ADMIN_EMAILS.add(DEV_USER_EMAIL)
 
+# The finances app reads the cost of lists that track costs by calling this app directly (no
+# signed-in person on a server-to-server call), proving itself with a shared secret sent as
+# X-Service-Token. Such a call acts as SERVICE_USER_EMAIL, by default the first administrator, and
+# can only read the cost summary. Unset, the endpoint refuses everything. Put the same value in
+# /etc/personal-apps/shared.env for finances (see DEPLOYMENT.md).
+SERVICE_TOKEN = os.environ.get("LISTS_SERVICE_TOKEN") or None
+SERVICE_USER_EMAIL = (os.environ.get("SERVICE_USER_EMAIL") or "").strip().lower() or None
+
 
 def _int_env(name: str, default: int) -> int:
     try:

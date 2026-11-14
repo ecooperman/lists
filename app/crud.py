@@ -61,6 +61,15 @@ def user_for_request(db: Session, email: str):
     return None, "none"
 
 
+def service_user(db: Session, email: str):
+    """The account another app's calls (X-Service-Token) act as. The operator configured this
+    identity, so it is created if it does not exist yet; None only if the administrator removed it."""
+    user, problem = user_for_request(db, email)
+    if user is None and problem == "none":
+        return _create_user(db, email)
+    return user
+
+
 def get_users_overview(db: Session):
     """Everyone with an account (the pre-accounts placeholder aside) with what
     they own, for the administrator's Users page. Counted per person - there

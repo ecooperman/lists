@@ -237,6 +237,22 @@ class ItemList(ItemListBase):
     cost_excluded_cents: int = 0
 
 
+class ListCostSummary(BaseModel):
+    """One list that tracks costs, for the finances app (GET /api/lists/cost-summary): what it still
+    costs, as a single lump sum. Same counting as the list's own totals strip - each item at its final
+    cost or else its estimate, items left out of the totals ignored - and done items count as bought."""
+
+    id: int
+    name: str
+    total_cost_cents: int  # everything counted
+    bought_cents: int  # of that, items already ticked done
+    to_buy_cents: int  # still to buy: total minus bought
+    item_count: int
+    open_count: int
+    excluded_count: int  # items left out of the totals
+    unpriced_count: int  # items with no price yet
+
+
 class Member(BaseModel):
     user_id: int
     email: str

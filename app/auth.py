@@ -6,6 +6,7 @@ shared_python.auth verifies it (and refuses everything in production if that
 isn't configured); here it becomes this app's own User row, created the first
 time we see them.
 """
+import hmac
 import logging
 
 from fastapi import Depends, HTTPException, Request
@@ -55,3 +56,28 @@ def require_admin(user: models.User = Depends(current_user)) -> models.User:
     if not is_admin(user):
         raise HTTPException(status_code=403, detail="Only the app's administrator can do that")
     return user
+
+
+SERVICE_HEADER = "X-Service-Token"
+
+
+def _service_user(db: Session) -> models.User:
+    email = config.SERVICE_USER_EMAIL or (sorted(config.ADMIN_EMAILS)[0] if config.ADMIN_EMAILS else None)
+    if not email:
+        raise HTTPException(status_code=503, detail="No service user is configured (set ADMIN_EMAILS)")
+    user = crud.service_user(db, email)
+    if user is None:
+        raise HTTPException(status_code=403, detail="The service user's access has been removed")
+    return user
+
+
+def user_or_service(request: Request, db: Session = Depends(get_db)) -> models.User:
+    """For the one endpoint another app on this machine calls directly: a valid X-Service-Token makes
+    the request that of the service user (the administrator); otherwise it must be a signed-in person
+    as usual. A wrong token is refused outright - never quietly treated as "no token"."""
+    supplied = request.headers.get(SERVICE_HEADER)
+    if supplied is not None:
+        if not config.SERVICE_TOKEN or not hmac.compare_digest(supplied.encode(), config.SERVICE_TOKEN.encode()):
+            raise HTTPException(status_code=401, detail="Invalid service token")
+        return _service_user(db)
+    return current_user(request, db)
