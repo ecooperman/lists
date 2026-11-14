@@ -404,6 +404,20 @@ def list_views(db: Session, members):
         .filter(models.Item.list_id.in_(list_ids))
         .group_by(models.Item.list_id)
     }
+    # Cost totals for the lists that track them: each item counts at its final cost, or its
+    # estimate if there is no final one yet; done items are "bought".
+    cost = func.coalesce(models.Item.final_cents, models.Item.estimate_cents)
+    costs = {
+        list_id: (int(total), int(bought), int(unpriced))
+        for list_id, total, bought, unpriced in db.query(
+            models.Item.list_id,
+            func.coalesce(func.sum(cost), 0),
+            func.coalesce(func.sum(case((models.Item.done.is_(True), cost), else_=0)), 0),
+            func.coalesce(func.sum(case((cost.is_(None), 1), else_=0)), 0),
+        )
+        .filter(models.Item.list_id.in_(list_ids))
+        .group_by(models.Item.list_id)
+    }
     member_counts = dict(
         db.query(models.ListMember.list_id, func.count(models.ListMember.user_id))
         .filter(models.ListMember.list_id.in_(list_ids))
@@ -419,6 +433,9 @@ def list_views(db: Session, members):
         item_list.owner_email = item_list.owner.email
         item_list.member_count = member_counts.get(member.list_id, 1)
         item_list.item_count, item_list.open_count = counts.get(member.list_id, (0, 0))
+        item_list.cost_total_cents, item_list.cost_bought_cents, item_list.unpriced_count = (
+            costs.get(member.list_id, (0, 0, 0)) if item_list.track_costs else (0, 0, 0)
+        )
         views.append(item_list)
     return views
 
@@ -481,6 +498,8 @@ def update_list(db: Session, member: models.ListMember, list_fields: dict, membe
     member_fields are this person's alone (their category)."""
     for field, value in list_fields.items():
         setattr(member.list, field, value)
+    if not member.list.track_costs and member.list.sort_mode == "price":
+        member.list.sort_mode = "manual"  # there are no prices to sort by any more
     for field, value in member_fields.items():
         setattr(member, field, value)
     db.commit()
@@ -808,6 +827,8 @@ def get_items(db: Session, list_id: int):
     order = [models.Item.done]
     if sort_mode == "priority":
         order.append(models.Item.priority.desc().nulls_last())
+    elif sort_mode == "price":
+        order.append(func.coalesce(models.Item.final_cents, models.Item.estimate_cents).desc().nulls_last())
     order += [models.Item.sort_order, models.Item.id]
     return (
         db.query(models.Item)

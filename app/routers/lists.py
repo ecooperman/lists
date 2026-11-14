@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/lists", tags=["lists"])
 
 # What a PATCH on a list may change, by who may change it. Everything else is
 # the list as everyone sees it; category_id is only this person's own filing.
-OWNER_FIELDS = {"name", "purpose", "locked", "priority_labels"}
+OWNER_FIELDS = {"name", "purpose", "locked", "priority_labels", "track_costs"}
 EDITOR_FIELDS = {"sort_mode"}
 PERSONAL_FIELDS = {"category_id"}
 
@@ -54,7 +54,11 @@ def update_list(
 ):
     sent = updates.model_fields_set
     if "sort_mode" in sent and updates.sort_mode is None:
-        raise HTTPException(status_code=400, detail="sort_mode must be manual or priority")
+        raise HTTPException(status_code=400, detail="sort_mode must be manual, priority or price")
+    if "track_costs" in sent and updates.track_costs is None:
+        raise HTTPException(status_code=400, detail="track_costs must be true or false")
+    if updates.sort_mode == "price" and not (updates.track_costs if "track_costs" in sent else member.list.track_costs):
+        raise HTTPException(status_code=400, detail="Turn on Track costs before sorting by price")
     if sent & OWNER_FIELDS:
         check_role(member, models.ROLE_OWNER)
     if sent & EDITOR_FIELDS:

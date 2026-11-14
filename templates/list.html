@@ -64,6 +64,10 @@
         <div id="access-mount"></div>
       </div>
       <div class="field checkbox-field">
+        <input id="edit-list-track-costs" name="track_costs" type="checkbox" />
+        <label for="edit-list-track-costs">Track costs - give each item an estimate and a final cost, and show the list's total</label>
+      </div>
+      <div class="field checkbox-field">
         <input id="edit-list-locked" name="locked" type="checkbox" />
         <label for="edit-list-locked">Locked - this list can't be deleted until it's unlocked</label>
       </div>
@@ -113,6 +117,10 @@
         <label for="new-description">Description</label>
         <textarea id="new-description" name="description" rows="2" placeholder="Optional notes"></textarea>
       </div>
+      <div class="field cost-field hidden" id="new-estimate-field">
+        <label for="new-estimate">Estimate</label>
+        <input id="new-estimate" name="estimate" type="text" inputmode="decimal" placeholder="e.g. 24.99" />
+      </div>
       <div class="field-row">
         <div class="field">
           <label for="new-url">URL</label>
@@ -131,6 +139,7 @@
     </form>
 
     <section>
+      <div id="list-costs" class="cost-summary hidden" aria-live="polite"></div>
       <div class="list-header">
         <h2>Items</h2>
         <span id="item-count" class="list-count"></span>
@@ -138,6 +147,7 @@
           <select id="sort-mode" aria-label="Sort items">
             <option value="manual">Manual</option>
             <option value="priority">Priority</option>
+            <option value="price" id="sort-price-option" hidden disabled>Price (highest first)</option>
           </select>
         </label>
       </div>

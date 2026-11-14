@@ -31,6 +31,7 @@ const itemCtx = {
     return canEdit();
   },
   reload: () => loadItems(),
+  refreshTotals: () => refreshTotals(),
 };
 
 // What you can do here follows from your role on this list (currentList.my_role):
@@ -83,11 +84,49 @@ function renderListHeader() {
   document.getElementById("list-locked").classList.toggle("hidden", !currentList.locked);
   const category = currentList.category_id ? categoriesById[currentList.category_id] : null;
   document.getElementById("list-category-slot").replaceChildren(...(category ? [categoryPill(category)] : []));
+  const priceOption = document.getElementById("sort-price-option");
+  priceOption.hidden = priceOption.disabled = !currentList.track_costs;
   document.getElementById("sort-mode").value = currentList.sort_mode;
+  document.getElementById("new-estimate-field").classList.toggle("hidden", !currentList.track_costs);
+  renderCosts();
   applyRole();
   const newPriority = document.getElementById("new-priority");
   populatePrioritySelect(newPriority, Number(newPriority.value) || null);
   document.title = `${currentList.name} - Lists`;
+}
+
+// The totals strip above the items of a list that tracks costs: what everything adds up to
+// (each item at its final cost, or its estimate until there is one), what is already bought
+// (done items), and what is still to buy.
+function renderCosts() {
+  const box = document.getElementById("list-costs");
+  box.classList.toggle("hidden", !currentList.track_costs);
+  if (!currentList.track_costs) return;
+  const total = currentList.cost_total_cents;
+  const bought = currentList.cost_bought_cents;
+  const stat = (label, cents, extraClass = "") =>
+    Global.el("div", { class: `cost-stat ${extraClass}`.trim() }, [
+      Global.el("span", { class: "cost-stat-label", text: label }),
+      Global.el("span", { class: "cost-stat-value", text: formatMoney(cents) }),
+    ]);
+  const parts = [stat("Total", total, "cost-stat-total"), stat("Bought", bought), stat("Still to buy", total - bought)];
+  const n = currentList.unpriced_count;
+  if (n) parts.push(Global.el("span", { class: "cost-unpriced", text: `${n} ${n === 1 ? "item has" : "items have"} no price yet` }));
+  box.replaceChildren(...parts);
+}
+
+// Re-read the list (the totals live on it) after a price or a done-tick changed them.
+async function refreshTotals() {
+  try {
+    const fresh = await Global.fetchJSON(LIST_API);
+    currentList.cost_total_cents = fresh.cost_total_cents;
+    currentList.cost_bought_cents = fresh.cost_bought_cents;
+    currentList.unpriced_count = fresh.unpriced_count;
+    currentList.item_count = fresh.item_count;
+    renderCosts();
+  } catch (err) {
+    console.error("Failed to refresh the totals", err);
+  }
 }
 
 const ROLE_TEXT = { edit: "You can edit this list", view: "You can only view this list" };
@@ -169,6 +208,7 @@ function initEditListForm() {
     form.purpose.value = currentList.purpose || "";
     fillLabelInputs();
     form.locked.checked = currentList.locked;
+    form.track_costs.checked = currentList.track_costs;
     fillCategorySelect(form.category_id, categories, currentList.category_id);
     syncDeleteButton();
     form.classList.remove("hidden");
@@ -202,6 +242,7 @@ function initEditListForm() {
           name,
           purpose: form.purpose.value.trim() || null,
           locked: form.locked.checked,
+          track_costs: form.track_costs.checked,
           category_id: form.category_id.value ? Number(form.category_id.value) : null,
           priority_labels: [...labelInputs.querySelectorAll("input")].map((input) => input.value.trim()),
         }),
@@ -419,6 +460,7 @@ function initImportForm() {
 async function loadItems() {
   const items = await Global.withLoading(document.getElementById("items-list"), Global.fetchJSON(`${LIST_API}/items`));
   renderItems(items);
+  if (currentList.track_costs) refreshTotals();
 }
 
 function renderItems(items) {
@@ -428,8 +470,8 @@ function renderItems(items) {
   list.innerHTML = "";
   // Drag handles only make sense in manual mode - in priority mode the
   // server decides the order.
-  list.classList.toggle("sort-priority", currentList.sort_mode === "priority");
-  if (sortable) sortable.option("disabled", currentList.sort_mode === "priority" || !canEdit());
+  list.classList.toggle("sort-priority", currentList.sort_mode !== "manual");
+  if (sortable) sortable.option("disabled", currentList.sort_mode !== "manual" || !canEdit());
   const remaining = items.filter((i) => !i.done).length;
   count.textContent = items.length ? `${remaining} left` : "";
   emptyState.hidden = items.length !== 0;
@@ -469,6 +511,7 @@ function initAddItemForm() {
       needed_by: Global.dateInputToISO(form.needed_by.value),
     };
     try {
+      if (currentList.track_costs) payload.estimate_cents = parseMoney(form.estimate.value);
       await Global.fetchJSON(`${LIST_API}/items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

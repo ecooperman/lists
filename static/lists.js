@@ -403,6 +403,11 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
   badges.appendChild(accessSlot);
   setAccessBadge(accessSlot, itemList);
 
+  // A list that tracks costs shows its total (final costs where known, estimates otherwise).
+  const costBadge = Global.el("span", { class: "item-badge item-badge-muted item-badge-cost" });
+  setCostBadge(costBadge, itemList);
+  badges.appendChild(costBadge);
+
   const countBadge = Global.el("span", { class: "item-badge item-badge-accent" });
   setCountBadge(countBadge, itemList);
   badges.appendChild(countBadge);
@@ -424,7 +429,7 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
   summary.appendChild(toggleBtn);
 
   card.append(summary, details);
-  listViews.set(itemList.id, { card, countBadge, reloadPreview: () => loadPreview(itemList, preview) });
+  listViews.set(itemList.id, { card, countBadge, costBadge, reloadPreview: () => loadPreview(itemList, preview) });
 
   if (expanded) {
     card.classList.add("expanded");
@@ -462,6 +467,14 @@ function setCountBadge(badge, itemList) {
   badge.textContent = itemList.item_count ? `${itemList.open_count} left` : "Empty";
 }
 
+function setCostBadge(badge, itemList) {
+  badge.classList.toggle("hidden", !itemList.track_costs);
+  if (!itemList.track_costs) return;
+  badge.textContent = formatMoney(itemList.cost_total_cents);
+  const n = itemList.unpriced_count;
+  badge.title = `Total cost - each item at its final cost, or its estimate${n ? `. ${n} ${n === 1 ? "item has" : "items have"} no price yet` : ""}`;
+}
+
 // After an edit in one list's items (checked off, deleted, moved to another
 // list): bring the header counts back in step with the server. An open list
 // whose items just changed because something was moved into it reloads too.
@@ -476,12 +489,15 @@ async function refreshCounts(editedId) {
   for (const row of fresh) {
     const mine = lists.find((l) => l.id === row.id);
     if (!mine) continue;
-    const changed = mine.item_count !== row.item_count || mine.open_count !== row.open_count;
+    const changed = mine.item_count !== row.item_count || mine.open_count !== row.open_count || mine.cost_total_cents !== row.cost_total_cents;
     mine.item_count = row.item_count;
     mine.open_count = row.open_count;
+    mine.cost_total_cents = row.cost_total_cents;
+    mine.unpriced_count = row.unpriced_count;
     const view = listViews.get(row.id);
     if (!view) continue;
     setCountBadge(view.countBadge, mine);
+    setCostBadge(view.costBadge, mine);
     if (changed && row.id !== editedId && view.card.classList.contains("expanded")) view.reloadPreview();
   }
 }
@@ -529,6 +545,8 @@ async function loadPreview(itemList, preview) {
         loadPreview(itemList, preview);
         refreshCounts(itemList.id);
       },
+      // A price changed: the card's total follows (the open list itself needn't reload).
+      refreshTotals: () => refreshCounts(itemList.id),
     };
     // Drag handles only make sense in manual mode (the .sort-priority class
     // hides them) - in priority mode the server decides the order.

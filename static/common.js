@@ -71,3 +71,28 @@ function categoryPill(category) {
   applyCategoryColors(pill, category.color, category.text_color);
   return pill;
 }
+
+// --- money (a list that tracks costs; amounts are whole cents on the server) ---
+
+const MONEY_FORMAT = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+
+// 123456 -> "$1,234.56"
+function formatMoney(cents) {
+  return MONEY_FORMAT.format((cents || 0) / 100);
+}
+
+// What an input holds for an amount: "1234.56" (no symbol or commas, so it edits cleanly); "" for none.
+function centsToInput(cents) {
+  return cents === null || cents === undefined ? "" : (cents / 100).toFixed(2);
+}
+
+// What someone typed ("$1,234.5", "12", "") -> whole cents, or null for blank.
+// Throws a plain-English error for anything that isn't an amount.
+function parseMoney(text) {
+  const cleaned = String(text || "").replace(/[$,\s]/g, "");
+  if (cleaned === "") return null;
+  if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) throw new Error("Enter an amount like 25 or 24.99.");
+  const cents = Math.round(parseFloat(cleaned) * 100);
+  if (cents > 1_000_000_000) throw new Error("That amount is too large.");
+  return cents;
+}

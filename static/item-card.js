@@ -9,6 +9,8 @@
 //   ctx.contacts  every contact, for the "who is it for" field
 //   ctx.reload()  re-fetch and re-render that list's items (called when an
 //                 edit changes which items there are or in what order)
+//   ctx.refreshTotals()  optional: bring the list's cost totals up to date after a
+//                 price changed (a list that tracks costs)
 //   ctx.canEdit   false for someone with view-only access: the card then shows
 //                 the item as plain text, with nothing to edit, check or drag
 // They're read when a card is built, so a page can swap in new values by
@@ -56,6 +58,17 @@ const ItemCard = (function () {
       { key: "description", label: "Description", type: "textarea", get: (it) => it.description || "", toApi: (v) => v || null },
       { key: "links", label: "Links", custom: true },
       { key: "needed_by", label: "Needed by", type: "date", format: formatLongDate, get: (it) => Global.toISODate(it.needed_by), toApi: (v) => Global.dateInputToISO(v) },
+      ...(ctx.list.track_costs ? costFieldDefs() : []),
+    ];
+  }
+
+  // The two cost fields of a list that tracks costs. The final cost is optional: left blank,
+  // the item counts at its estimate.
+  function costFieldDefs() {
+    const base = { type: "text", cost: true, format: (v) => formatMoney(parseMoney(v)), toApi: parseMoney };
+    return [
+      { ...base, key: "estimate_cents", label: "Estimate", placeholder: "Click to add", formPlaceholder: "e.g. 24.99", get: (it) => centsToInput(it.estimate_cents) },
+      { ...base, key: "final_cents", label: "Final cost", placeholder: "Same as the estimate", formPlaceholder: "Same as the estimate", get: (it) => centsToInput(it.final_cents) },
     ];
   }
 
@@ -68,6 +81,10 @@ const ItemCard = (function () {
       input = Global.el("textarea", { rows: "2" });
     } else {
       input = Global.el("input", { type: def.type });
+      if (def.cost) {
+        input.setAttribute("inputmode", "decimal");
+        input.placeholder = def.formPlaceholder || "";
+      }
     }
     input.value = value;
     return input;
@@ -209,6 +226,17 @@ const ItemCard = (function () {
       );
     }
 
+    if (ctx.list.track_costs && item.cost_cents !== null && item.cost_cents !== undefined) {
+      const final = item.final_cents !== null && item.final_cents !== undefined;
+      right.appendChild(
+        Global.el("span", {
+          class: "item-badge item-badge-muted item-badge-cost",
+          title: final ? `Final cost${item.estimate_cents != null ? ` (estimated ${formatMoney(item.estimate_cents)})` : ""}` : "Estimate",
+          text: formatMoney(item.cost_cents),
+        })
+      );
+    }
+
     right.appendChild(Global.el("span", { class: "item-badge item-badge-muted item-badge-progress hidden" }));
 
     const dateLabel = Global.formatDateBadge(item.needed_by);
@@ -276,6 +304,10 @@ const ItemCard = (function () {
       );
     }
     add("Needed by", item.needed_by ? text(formatLongDate(Global.toISODate(item.needed_by))) : null);
+    if (ctx.list.track_costs) {
+      add("Estimate", item.estimate_cents != null ? text(formatMoney(item.estimate_cents)) : null);
+      add("Final cost", item.final_cents != null ? text(formatMoney(item.final_cents)) : null);
+    }
     add("Progress", item.progress ? text(`${item.progress}%`) : null);
     if (!fields.children.length) fields.appendChild(Global.el("p", { class: "preview-empty", text: "No more details." }));
     wrap.appendChild(fields);
@@ -369,6 +401,7 @@ const ItemCard = (function () {
           required: def.required,
           requiredMessage: def.requiredMessage,
           format: def.format,
+          placeholder: def.placeholder,
           async onSave(raw) {
             const updated = await patchItem(item, { [def.key]: def.toApi(raw) });
             Object.assign(item, updated);
@@ -377,6 +410,14 @@ const ItemCard = (function () {
               // Priority decides the order in this mode, so the item may belong elsewhere now.
               ctx.reload();
               return def.get(updated);
+            }
+            if (def.cost) {
+              // A price changes the list's totals (and the order, when sorted by price).
+              if (ctx.list.sort_mode === "price") {
+                ctx.reload();
+                return def.get(updated);
+              }
+              if (ctx.refreshTotals) ctx.refreshTotals();
             }
             refreshSummary(card, item, ctx);
             return def.get(updated);
@@ -415,7 +456,12 @@ const ItemCard = (function () {
               return;
             }
             Global.showMessage(`Saved "${name}".`, "success");
+            if (ctx.list.sort_mode === "price") {
+              ctx.reload();
+              return;
+            }
             card.replaceWith(create(updated, ctx, { expanded: true }));
+            if (ctx.refreshTotals) ctx.refreshTotals();
           } catch (err) {
             Global.showMessage(err.message, "error");
           }

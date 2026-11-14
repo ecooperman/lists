@@ -170,7 +170,8 @@ who may do what):
 - `GET /api/lists/{id}` - fetch one list
 - `PATCH /api/lists/{id}` - update `name` / `purpose` / `locked` / `category_id`
   (`null` clears it), plus
-  `sort_mode` (`manual` or `priority`) and `priority_labels` (exactly five
+  `sort_mode` (`manual`, `priority`, or `price` on a list that tracks costs), `track_costs`
+  (owner only; see "Tracking costs" in Notes) and `priority_labels` (exactly five
   names for priority levels 1-5; a blank one falls back to its default, `null`
   resets all five). Every list response carries `priority_labels` fully
   resolved, so clients never need the defaults (Low, Medium, High, Critical,
@@ -191,8 +192,9 @@ who may do what):
   items (same guard as contacts) unless you pass `?force=true`, which deletes
   the items along with the list and returns `deleted_items`
 - `GET /api/lists/{id}/items` - the list's items, not-done first, then by the
-  list's `sort_mode`: `manual` (the drag order, default) or `priority`
-  (highest first, items with no priority last, ties in manual order)
+  list's `sort_mode`: `manual` (the drag order, default), `priority`
+  (highest first, items with no priority last, ties in manual order) or `price`
+  (dearest first, unpriced last)
 - `POST /api/lists/{id}/items` - add an item to the end of the list (`name` is
   the only required field)
 - `PUT /api/lists/{id}/items/order` - body `{"item_ids": [...]}`; saves that
@@ -505,6 +507,17 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
   `POST /api/items/{id}/scrape`. It can be re-run any time (e.g. after a
   transient failure) via "Re-fetch preview", and lives inside the expanded
   card alongside the scraped preview (if any).
+- **Tracking costs.** A list's owner can tick "Track costs" in Edit list. Each item then has
+  an *estimate* and a *final cost* (`estimate_cents`, `final_cents`: whole cents, the house
+  money convention; both optional). An item counts at its final cost once that is entered,
+  otherwise at its estimate (`cost_cents` on the item, `COALESCE(final, estimate)` in the totals;
+  a final cost of 0 is a real answer). The list response then carries `cost_total_cents`,
+  `cost_bought_cents` (done items) and `unpriced_count` (items with neither price); the page
+  shows Total / Bought / Still to buy (= total minus bought) above the items, each item shows its
+  price as a badge, and the lists index shows the total on the list's card. "Price (highest
+  first)" becomes a sort option; turning tracking off puts a list sorted by price back to
+  manual. Prices are kept (just not shown) when tracking is off or an item moves to a list that
+  doesn't track costs. Copies ("Send a copy") don't include prices yet.
 - Every list shares the same item fields for now (including the gift-flavored
   "Who is it for?" / "Needed by"); per-list fields would be the next layer.
 

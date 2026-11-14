@@ -176,7 +176,7 @@ class ItemListCreate(ItemListBase):
     pass
 
 
-SortMode = Literal["manual", "priority"]
+SortMode = Literal["manual", "priority", "price"]
 PriorityLabel = Annotated[str, StringConstraints(max_length=30)]
 
 
@@ -186,6 +186,7 @@ class ItemListUpdate(BaseModel):
     locked: Optional[bool] = None
     sort_mode: Optional[SortMode] = None
     category_id: Optional[int] = None  # null clears it
+    track_costs: Optional[bool] = None
     # Exactly five labels for priority levels 1-5; a blank one falls back to
     # its default, and null resets all five.
     priority_labels: Optional[List[PriorityLabel]] = Field(default=None, min_length=5, max_length=5)
@@ -210,6 +211,13 @@ class ItemList(ItemListBase):
     member_count: int = 1
     item_count: int = 0
     open_count: int = 0
+    # Only meaningful when track_costs is on (else 0): what the items add up to, counting each at
+    # its final cost or, failing that, its estimate; how much of that is already bought (done items);
+    # and how many items have no price at all yet.
+    track_costs: bool = False
+    cost_total_cents: int = 0
+    cost_bought_cents: int = 0
+    unpriced_count: int = 0
 
 
 class Member(BaseModel):
@@ -303,12 +311,18 @@ class ItemLink(BaseModel):
     url: str
 
 
+# Money is whole cents (up to $10 million, which no list here comes near).
+Cents = Annotated[int, Field(ge=0, le=1_000_000_000)]
+
+
 class ItemBase(BaseModel):
     name: str
     description: Optional[str] = None
     needed_by: Optional[datetime] = None
     recipient_id: Optional[int] = None
     priority: Optional[int] = Field(default=None, ge=1, le=5)
+    estimate_cents: Optional[Cents] = None
+    final_cents: Optional[Cents] = None
 
 
 class ItemCreate(ItemBase):
@@ -340,6 +354,8 @@ class ItemUpdate(BaseModel):
     done: Optional[bool] = None
     progress: Optional[int] = Field(default=None, ge=0, le=100)
     priority: Optional[int] = Field(default=None, ge=1, le=5)  # null clears it
+    estimate_cents: Optional[Cents] = None  # null clears it
+    final_cents: Optional[Cents] = None  # null clears it (the estimate counts again)
     # Moves the item to another list. Can't be cleared - every item belongs
     # to exactly one list (the router rejects an explicit null).
     list_id: Optional[int] = None
@@ -357,6 +373,8 @@ class Item(ItemBase):
     done: bool
     done_at: Optional[datetime] = None
     progress: int
+    # What the item counts as in a cost total: the final cost if entered, else the estimate (null: neither).
+    cost_cents: Optional[int] = None
     recipient: Optional[ContactRef] = None
     scrape_status: ScrapeStatus
     scraped_title: Optional[str] = None

@@ -102,9 +102,13 @@ class ItemList(Base):
     purpose = Column(String, nullable=True)
     # A locked list can't be deleted until it's unlocked (see crud.delete_list).
     locked = Column(Boolean, nullable=False, default=False)
-    # How the list's items are ordered: "manual" (the drag order, sort_order)
-    # or "priority" (highest first, ties in manual order). See crud.get_items.
+    # How the list's items are ordered: "manual" (the drag order, sort_order),
+    # "priority" (highest first, ties in manual order) or, on a list that tracks
+    # costs, "price" (dearest first). See crud.get_items.
     sort_mode = Column(String, nullable=False, default="manual")
+    # "Track costs": every item gets an estimate and a final cost, and the list shows
+    # totals (see crud.list_views). Off by default; owner-only to change.
+    track_costs = Column(Boolean, nullable=False, default=False, server_default=text("0"))
     # This list's own names for priority levels 1-5, or NULL for the defaults.
     # Read/write it through the priority_labels property below.
     _priority_labels = Column("priority_labels", JSON, nullable=True)
@@ -203,6 +207,11 @@ class Item(Base):
     name = Column(String, nullable=False)
     description = Column(String, nullable=True)
     needed_by = Column(DateTime, nullable=True)
+    # What it should cost and what it did cost, in whole cents (the house money
+    # convention). Only shown on a list that tracks costs, but kept when the item moves
+    # to one that doesn't. A missing final cost means "as estimated" - see Item.cost_cents.
+    estimate_cents = Column(Integer, nullable=True)
+    final_cents = Column(Integer, nullable=True)
 
     done = Column(Boolean, nullable=False, default=False)
     done_at = Column(DateTime, nullable=True)
@@ -233,6 +242,12 @@ class Item(Base):
     links = relationship(
         "ItemLink", back_populates="item", cascade="all, delete-orphan", order_by="ItemLink.position, ItemLink.id"
     )
+
+    @property
+    def cost_cents(self):
+        """What this item counts as in a list's totals: the final cost once it is known,
+        otherwise the estimate; None if neither has been entered."""
+        return self.final_cents if self.final_cents is not None else self.estimate_cents
 
     @property
     def url(self):
