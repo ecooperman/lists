@@ -704,7 +704,10 @@ const ItemCard = (function () {
             return raw;
           },
         });
-        const openLink = Global.el("a", { class: "link-open", target: "_blank", rel: "noopener noreferrer", title: "Open this link", "aria-label": "Open this link", text: "↗" });
+        const openLink = Global.el("a", { class: "link-open", target: "_blank", rel: "noopener noreferrer", title: "Open this link", "aria-label": "Open this link" }, [
+          Global.el("span", { class: "btn-icon", "data-icon": "external", "aria-hidden": "true" }),
+        ]);
+        applyIcons(openLink);
         const showOpen = () => {
           if (row._link.url) openLink.setAttribute("href", row._link.url);
           else openLink.removeAttribute("href");
