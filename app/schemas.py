@@ -231,6 +231,10 @@ class ItemList(ItemListBase):
     # cost_total_cents split by priority level, highest level first (null = no priority last);
     # levels that add up to nothing are left out, so these always sum to cost_total_cents.
     cost_by_priority: List[PriorityCost] = []
+    # What "exclude from totals" has set aside (only on a list that tracks costs): how many items
+    # are excluded and what they would add up to, so the totals strip can say what is left out.
+    excluded_count: int = 0
+    cost_excluded_cents: int = 0
 
 
 class Member(BaseModel):
@@ -336,6 +340,7 @@ class ItemBase(BaseModel):
     priority: Optional[int] = Field(default=None, ge=1, le=5)
     estimate_cents: Optional[Cents] = None
     final_cents: Optional[Cents] = None
+    exclude_from_totals: bool = False
 
 
 class ItemCreate(ItemBase):
@@ -369,6 +374,7 @@ class ItemUpdate(BaseModel):
     priority: Optional[int] = Field(default=None, ge=1, le=5)  # null clears it
     estimate_cents: Optional[Cents] = None  # null clears it
     final_cents: Optional[Cents] = None  # null clears it (the estimate counts again)
+    exclude_from_totals: Optional[bool] = None  # true leaves it out of the cost totals; null is ignored
     # Moves the item to another list. Can't be cleared - every item belongs
     # to exactly one list (the router rejects an explicit null).
     list_id: Optional[int] = None

@@ -980,6 +980,51 @@ html[data-ui="v2"] .list-tools > button {
   color: var(--accent);
 }
 
+.cost-excluded {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.cost-excluded + .cost-unpriced {
+  margin-left: 0;
+}
+
+/* Left out of the totals: the row's price is struck through and the card dims slightly. */
+.item-badge-excluded {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.item-card.excluded .item-summary-title,
+.item-card.excluded .summary-title-edit {
+  opacity: 0.75;
+}
+
+.item-exclude-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 4px;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.item-exclude-toggle:hover,
+.item-exclude-toggle:focus-visible {
+  color: var(--text);
+  background: var(--muted-bg);
+}
+
+.item-exclude-toggle.on {
+  color: var(--warning);
+}
+
+.item-exclude-toggle .btn-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
 .cost-unpriced {
   font-size: 12px;
   color: var(--warning);

@@ -226,6 +226,10 @@ class Item(Base):
     # convention). Only shown on a list that tracks costs, but kept when the item moves
     # to one that doesn't. A missing final cost means "as estimated" - see Item.cost_cents.
     estimate_cents = Column(Integer, nullable=True)
+    # "What if" switch for a list that tracks costs: an excluded item stays on the list with
+    # its price but is left out of every total (the list's, the by-priority lines, the index
+    # card, a copy's Total). Nothing else about the item changes.
+    exclude_from_totals = Column(Boolean, nullable=False, default=False, server_default=text("0"))
     final_cents = Column(Integer, nullable=True)
 
     done = Column(Boolean, nullable=False, default=False)

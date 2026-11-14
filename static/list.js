@@ -114,11 +114,15 @@ function renderCosts() {
       Global.el("span", { class: "cost-stat-value", text: formatMoney(cents) }),
     ]);
   const n = currentList.unpriced_count;
+  const out = currentList.excluded_count;
+  const leftOut = out
+    ? Global.el("span", { class: "cost-excluded", text: `${out} ${out === 1 ? "item is" : "items are"} left out (${formatMoney(currentList.cost_excluded_cents)})` })
+    : null;
   const unpriced = n ? Global.el("span", { class: "cost-unpriced", text: `${n} ${n === 1 ? "item has" : "items have"} no price yet` }) : null;
   const buckets = currentList.cost_by_priority || [];
   box.classList.toggle("cost-summary-by-priority", buckets.some((b) => b.priority));
   if (!buckets.some((b) => b.priority)) {
-    box.replaceChildren(...[stat("Total", total, "cost-stat-total"), stat("Bought", bought), stat("Still to buy", total - bought), unpriced].filter(Boolean));
+    box.replaceChildren(...[stat("Total", total, "cost-stat-total"), stat("Bought", bought), stat("Still to buy", total - bought), leftOut, unpriced].filter(Boolean));
     return;
   }
   const line = (label, cents, extraClass = "") =>
@@ -132,7 +136,7 @@ function renderCosts() {
     Global.el("span", { class: "cost-line-extra", text: `${formatMoney(bought)} bought` }),
     Global.el("span", { class: "cost-line-extra", text: `${formatMoney(total - bought)} still to buy` })
   );
-  box.replaceChildren(...lines, totalLine, ...(unpriced ? [unpriced] : []));
+  box.replaceChildren(...lines, totalLine, ...[leftOut, unpriced].filter(Boolean));
 }
 
 // Re-read the list (the totals live on it) after a price or a done-tick changed them.
@@ -143,6 +147,8 @@ async function refreshTotals() {
     currentList.cost_bought_cents = fresh.cost_bought_cents;
     currentList.unpriced_count = fresh.unpriced_count;
     currentList.cost_by_priority = fresh.cost_by_priority;
+    currentList.excluded_count = fresh.excluded_count;
+    currentList.cost_excluded_cents = fresh.cost_excluded_cents;
     currentList.item_count = fresh.item_count;
     renderCosts();
   } catch (err) {

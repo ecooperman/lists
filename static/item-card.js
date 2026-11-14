@@ -118,6 +118,18 @@ const ItemCard = (function () {
     });
   }
 
+  // "Leave out of the totals" (a list that tracks costs): the item keeps its price but stops counting
+  // in any total, so a what-if can be tried and undone with one click. Used by the toggle on the
+  // row and the checkbox in the details, which are kept in step here.
+  async function setExcluded(card, item, ctx, value) {
+    const updated = await patchItem(item, { exclude_from_totals: value });
+    Object.assign(item, updated);
+    refreshSummary(card, item, ctx);
+    const box = card.querySelector(".item-exclude-box");
+    if (box) box.checked = !!item.exclude_from_totals;
+    if (ctx.refreshTotals) ctx.refreshTotals();
+  }
+
   // The item's name as a click-to-edit title in the accordion header, so it
   // can be renamed without expanding the card.
   function summaryTitleField(card, item) {
@@ -238,13 +250,45 @@ const ItemCard = (function () {
 
     if (ctx.list.track_costs && item.cost_cents !== null && item.cost_cents !== undefined) {
       const final = item.final_cents !== null && item.final_cents !== undefined;
+      const left = item.exclude_from_totals;
       right.appendChild(
         Global.el("span", {
-          class: "item-badge item-badge-muted item-badge-cost",
-          title: final ? `Final cost${item.estimate_cents != null ? ` (estimated ${formatMoney(item.estimate_cents)})` : ""}` : "Estimate",
+          class: "item-badge item-badge-muted item-badge-cost" + (left ? " item-badge-excluded" : ""),
+          title: (final ? `Final cost${item.estimate_cents != null ? ` (estimated ${formatMoney(item.estimate_cents)})` : ""}` : "Estimate") + (left ? " - left out of the totals" : ""),
           text: formatMoney(item.cost_cents),
         })
       );
+    }
+    if (ctx.list.track_costs && editable && (item.exclude_from_totals || (item.cost_cents !== null && item.cost_cents !== undefined))) {
+      const left = !!item.exclude_from_totals;
+      const toggle = Global.el("span", {
+        class: "item-exclude-toggle" + (left ? " on" : ""),
+        role: "button",
+        tabindex: "0",
+        "aria-pressed": String(left),
+        "aria-label": left ? "Count this item in the totals again" : "Leave this item out of the totals",
+        title: left ? "Left out of the totals - click to count it again" : "Leave out of the totals",
+      }, [Global.el("span", { class: "btn-icon", "data-icon": left ? "eye-off" : "eye", "aria-hidden": "true" })]);
+      applyIcons(toggle);
+      const flip = async () => {
+        try {
+          await setExcluded(card, item, ctx, !left);
+        } catch (err) {
+          Global.showMessage(err.message, "error");
+        }
+      };
+      toggle.addEventListener("click", (e) => {
+        e.stopPropagation(); // must not also expand or collapse the card
+        flip();
+      });
+      toggle.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          flip();
+        }
+      });
+      right.appendChild(toggle);
     }
 
     right.appendChild(Global.el("span", { class: "item-badge item-badge-muted item-badge-progress hidden" }));
@@ -259,6 +303,7 @@ const ItemCard = (function () {
 
   function refreshSummary(card, item, ctx) {
     card.classList.toggle("done", !!item.done);
+    card.classList.toggle("excluded", !!item.exclude_from_totals);
     renderSummary(card, card.querySelector(":scope > .item-summary"), item, card.querySelector(":scope > .item-details"), ctx);
     applyProgress(card, item, item.progress);
   }
@@ -271,7 +316,7 @@ const ItemCard = (function () {
   // touching" problem the same way.
   function create(item, ctx, { expanded = false } = {}) {
     const card = Global.el("div", {
-      class: "item-card" + (expanded ? " expanded" : "") + (item.done ? " done" : ""),
+      class: "item-card" + (expanded ? " expanded" : "") + (item.done ? " done" : "") + (item.exclude_from_totals ? " excluded" : ""),
       "data-id": item.id,
     });
 
@@ -487,6 +532,24 @@ const ItemCard = (function () {
         Global.el("div", { class: "progress-control" }, [progressInput, progressValue]),
       ])
     );
+    if (ctx.list.track_costs && ctx.canEdit !== false) {
+      const box = Global.el("input", { type: "checkbox", class: "item-exclude-box", "aria-label": "Leave out of the totals" });
+      box.checked = !!item.exclude_from_totals;
+      box.addEventListener("change", async () => {
+        try {
+          await setExcluded(card, item, ctx, box.checked);
+        } catch (err) {
+          box.checked = !box.checked;
+          Global.showMessage(err.message, "error");
+        }
+      });
+      fields.appendChild(
+        Global.el("div", { class: "field checkbox-field field-exclude" }, [
+          box,
+          Global.el("label", { text: "Leave out of the totals - keeps the price on the list but does not count it, handy for a what-if" }),
+        ])
+      );
+    }
     wrap.appendChild(fields);
 
     renderScrape();

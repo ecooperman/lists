@@ -259,3 +259,59 @@ def test_done_items_still_count_in_their_priority_line(alice):
     item = alice.post(f"/api/lists/{lid}/items", {"name": "Bed", "priority": 4, "estimate_cents": 700}).json()
     assert alice.patch(f"/api/items/{item['id']}", {"done": True}).status_code == 200
     assert by_priority(alice, lid) == [(4, 700)]
+
+
+# --- leaving items out of the totals (what-if) -------------------------------------------
+
+
+def test_an_excluded_item_keeps_its_price_but_counts_nowhere(alice):
+    lst = costed_list(alice)
+    lid = lst["id"]
+    keep = alice.post(f"/api/lists/{lid}/items", {"name": "Bed", "priority": 3, "estimate_cents": 90_000}).json()
+    out = alice.post(f"/api/lists/{lid}/items", {"name": "Sofa", "priority": 3, "estimate_cents": 50_000}).json()
+    assert out["exclude_from_totals"] is False
+    resp = alice.patch(f"/api/items/{out['id']}", {"exclude_from_totals": True})
+    assert resp.status_code == 200 and resp.json()["exclude_from_totals"] is True
+    assert resp.json()["estimate_cents"] == 50_000 and resp.json()["cost_cents"] == 50_000  # price untouched
+
+    body = alice.get(f"/api/lists/{lid}").json()
+    assert (body["cost_total_cents"], body["cost_bought_cents"]) == (90_000, 0)
+    assert by_priority(alice, lid) == [(3, 90_000)]
+    assert (body["excluded_count"], body["cost_excluded_cents"]) == (1, 50_000)
+    assert alice.get(f"/api/lists/{lid}/items").json()[1]["name"] == "Sofa"  # still on the list
+
+    # Put it back and it counts again.
+    assert alice.patch(f"/api/items/{out['id']}", {"exclude_from_totals": False}).status_code == 200
+    body = alice.get(f"/api/lists/{lid}").json()
+    assert (body["cost_total_cents"], body["excluded_count"], body["cost_excluded_cents"]) == (140_000, 0, 0)
+    assert keep["exclude_from_totals"] is False
+
+
+def test_excluded_items_are_not_bought_or_unpriced(alice):
+    lst = costed_list(alice)
+    lid = lst["id"]
+    done = alice.post(f"/api/lists/{lid}/items", {"name": "Towels", "estimate_cents": 3_000, "exclude_from_totals": True}).json()
+    alice.patch(f"/api/items/{done['id']}", {"done": True})
+    alice.post(f"/api/lists/{lid}/items", {"name": "No price, excluded", "exclude_from_totals": True})
+    body = alice.get(f"/api/lists/{lid}").json()
+    assert (body["cost_total_cents"], body["cost_bought_cents"], body["unpriced_count"]) == (0, 0, 0)
+    assert body["excluded_count"] == 2 and body["cost_excluded_cents"] == 3_000
+
+
+def test_null_exclude_is_ignored_and_viewers_cannot_change_it(alice, bob):
+    lst = costed_list(alice)
+    item = alice.post(f"/api/lists/{lst['id']}/items", {"name": "Bed", "estimate_cents": 100, "exclude_from_totals": True}).json()
+    assert alice.patch(f"/api/items/{item['id']}", {"exclude_from_totals": None}).json()["exclude_from_totals"] is True
+    share(alice, lst["id"], bob, "view")
+    assert bob.patch(f"/api/items/{item['id']}", {"exclude_from_totals": False}).status_code == 403
+
+
+def test_a_copy_total_leaves_out_excluded_items_and_says_so(alice):
+    lst = costed_list(alice)
+    lid = lst["id"]
+    alice.post(f"/api/lists/{lid}/items", {"name": "Bed", "estimate_cents": 75_000})
+    alice.post(f"/api/lists/{lid}/items", {"name": "Sofa", "estimate_cents": 50_000, "exclude_from_totals": True})
+    from tests.test_send_copy import copy_list
+
+    text = copy_list(alice, lid, heading=False, prices=True)["text"]
+    assert text.endswith("Total: $750 (1 left out)")

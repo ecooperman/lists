@@ -30,15 +30,23 @@ def _money(cents: int) -> str:
 
 def _total_line(items: List[models.Item], options: schemas.CopyOptions) -> Optional[str]:
     """The closing "Total: $1,234.50" of a copy that includes prices: what the items copied add up to,
-    each at its final cost or else its estimate. None when prices are off, only one item is copied, or
-    none of them has a price."""
+    each at its final cost or else its estimate, leaving out items the list has excluded from its
+    totals (said in a note). None when prices are off, only one item is copied, or none of the
+    counted ones has a price."""
     if not options.prices or len(items) < 2:  # one item's own Price line already says it
         return None
-    costs = [item.cost_cents for item in items]
+    counted = [item for item in items if not item.exclude_from_totals]
+    left_out = len(items) - len(counted)
+    costs = [item.cost_cents for item in counted]
     if all(cost is None for cost in costs):
         return None
     missing = sum(1 for cost in costs if cost is None)
-    note = f" ({missing} without a price)" if missing else ""
+    notes = []
+    if missing:
+        notes.append(f"{missing} without a price")
+    if left_out:
+        notes.append(f"{left_out} left out")
+    note = f" ({', '.join(notes)})" if notes else ""
     return f"Total: {_money(sum(cost for cost in costs if cost is not None))}{note}"
 
 

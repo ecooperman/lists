@@ -407,6 +407,7 @@ def list_views(db: Session, members):
     # Cost totals for the lists that track them: each item counts at its final cost, or its
     # estimate if there is no final one yet; done items are "bought".
     cost = func.coalesce(models.Item.final_cents, models.Item.estimate_cents)
+    counted = models.Item.exclude_from_totals.is_(False)  # items "left out of the totals" count for nothing
     costs = {
         list_id: (int(total), int(bought), int(unpriced))
         for list_id, total, bought, unpriced in db.query(
@@ -415,7 +416,15 @@ def list_views(db: Session, members):
             func.coalesce(func.sum(case((models.Item.done.is_(True), cost), else_=0)), 0),
             func.coalesce(func.sum(case((cost.is_(None), 1), else_=0)), 0),
         )
-        .filter(models.Item.list_id.in_(list_ids))
+        .filter(models.Item.list_id.in_(list_ids), counted)
+        .group_by(models.Item.list_id)
+    }
+    set_aside = {
+        list_id: (int(n), int(cents))
+        for list_id, n, cents in db.query(
+            models.Item.list_id, func.count(models.Item.id), func.coalesce(func.sum(cost), 0)
+        )
+        .filter(models.Item.list_id.in_(list_ids), models.Item.exclude_from_totals.is_(True))
         .group_by(models.Item.list_id)
     }
     # The same total split by priority level (None = items with no priority), only for the
@@ -425,7 +434,7 @@ def list_views(db: Session, members):
     if tracked:
         for list_id, priority, total in (
             db.query(models.Item.list_id, models.Item.priority, func.coalesce(func.sum(cost), 0))
-            .filter(models.Item.list_id.in_(tracked))
+            .filter(models.Item.list_id.in_(tracked), counted)
             .group_by(models.Item.list_id, models.Item.priority)
         ):
             if total:
@@ -450,6 +459,9 @@ def list_views(db: Session, members):
         item_list.item_count, item_list.open_count = counts.get(member.list_id, (0, 0))
         item_list.cost_total_cents, item_list.cost_bought_cents, item_list.unpriced_count = (
             costs.get(member.list_id, (0, 0, 0)) if item_list.track_costs else (0, 0, 0)
+        )
+        item_list.excluded_count, item_list.cost_excluded_cents = (
+            set_aside.get(member.list_id, (0, 0)) if item_list.track_costs else (0, 0)
         )
         item_list.cost_by_priority = by_priority.get(member.list_id, []) if item_list.track_costs else []
         views.append(item_list)
@@ -931,6 +943,8 @@ def update_item(db: Session, db_item: models.Item, updates: schemas.ItemUpdate):
                 db_item.scraped_image_url = None
                 db_item.scraped_at = None
                 db_item.scrape_error = None
+    if fields.get("exclude_from_totals", False) is None:
+        fields.pop("exclude_from_totals")  # a column that cannot be null; null just means "no change"
     if "done" in fields:
         # Track when an item was checked off so the UI can show it, and
         # clear it again if someone un-checks the box.
