@@ -74,16 +74,20 @@ function categoryPill(category) {
 
 // --- money (a list that tracks costs; amounts are whole cents on the server) ---
 
-const MONEY_FORMAT = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+const MONEY_WITH_CENTS = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+const MONEY_WHOLE = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
-// 123456 -> "$1,234.56"
+// 123456 -> "$1,234.56"; a whole-dollar amount drops the cents: 75000 -> "$750"
 function formatMoney(cents) {
-  return MONEY_FORMAT.format((cents || 0) / 100);
+  const amount = cents || 0;
+  return (amount % 100 === 0 ? MONEY_WHOLE : MONEY_WITH_CENTS).format(amount / 100);
 }
 
-// What an input holds for an amount: "1234.56" (no symbol or commas, so it edits cleanly); "" for none.
+// What an input holds for an amount: "1234.56", or "750" for a whole-dollar one (no symbol or
+// commas, so it edits cleanly); "" for none.
 function centsToInput(cents) {
-  return cents === null || cents === undefined ? "" : (cents / 100).toFixed(2);
+  if (cents === null || cents === undefined) return "";
+  return cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2);
 }
 
 // What someone typed ("$1,234.5", "12", "") -> whole cents, or null for blank.

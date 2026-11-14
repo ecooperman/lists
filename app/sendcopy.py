@@ -24,7 +24,8 @@ def _date(value) -> str:
 
 
 def _money(cents: int) -> str:
-    return f"${cents / 100:,.2f}"
+    """$1,234.50, or $750 when there are no cents."""
+    return f"${cents // 100:,}" if cents % 100 == 0 else f"${cents / 100:,.2f}"
 
 
 def _total_line(items: List[models.Item], options: schemas.CopyOptions) -> Optional[str]:

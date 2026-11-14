@@ -414,7 +414,7 @@ def test_prices_show_each_items_counted_cost_and_a_total(alice):
     text = copy_list(alice, lst["id"], heading=False, prices=True)["text"]
     assert text == (
         "- Couch\n"
-        "  Price: $750.00\n"
+        "  Price: $750\n"
         "\n"
         "- Boxes\n"
         "  Price: $60.50\n"
@@ -445,7 +445,7 @@ def test_no_prices_means_no_total_line(alice):
 def test_the_rich_version_has_the_prices_and_total_too(alice):
     lst = priced_list(alice)
     html = copy_list(alice, lst["id"], heading=False, prices=True)["html"]
-    assert "Price: $750.00" in html
+    assert "Price: $750" in html
     assert "<p><strong>Total:</strong> $810.50 (1 without a price)</p>" in html
 
 
@@ -453,14 +453,14 @@ def test_a_one_item_copy_can_carry_its_price(alice):
     lst = priced_list(alice)
     couch = alice.get(f"/api/lists/{lst['id']}/items").json()[0]
     text = copy_item(alice, couch["id"], style="plain", heading=False, links=False, prices=True)["text"]
-    assert text == "Couch\nPrice: $750.00"  # no total for a single item
+    assert text == "Couch\nPrice: $750"  # no total for a single item
 
 
 def test_an_emailed_copy_carries_the_prices_and_total(alice, mails):
     lst = priced_list(alice)
     assert email_list(alice, lst["id"], prices=True).status_code == 200
     to, subject, body, html, reply_to = mails[0]
-    assert "Price: $750.00" in body and "Total: $810.50" in body
+    assert "Price: $750" in body and "Total: $810.50" in body
     assert "Total:</strong> $810.50" in html
 
 
@@ -468,7 +468,7 @@ def test_a_list_with_one_priced_item_has_no_total_line(alice):
     lst = make_list(alice, "Move")
     alice.patch(f"/api/lists/{lst['id']}", {"track_costs": True})
     make_item(alice, lst["id"], "Couch", estimate_cents=100)
-    assert copy_list(alice, lst["id"], heading=False, prices=True)["text"] == "- Couch\n  Price: $1.00"
+    assert copy_list(alice, lst["id"], heading=False, prices=True)["text"] == "- Couch\n  Price: $1"
 
 
 def test_big_amounts_are_written_with_thousands_separators(alice):
@@ -477,4 +477,4 @@ def test_big_amounts_are_written_with_thousands_separators(alice):
     make_item(alice, lst["id"], "Car", estimate_cents=1234500)
     make_item(alice, lst["id"], "Bike", estimate_cents=99900)
     text = copy_list(alice, lst["id"], heading=False, prices=True)["text"]
-    assert "Price: $12,345.00" in text and text.endswith("Total: $13,344.00")
+    assert "Price: $12,345" in text and text.endswith("Total: $13,344")
