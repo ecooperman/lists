@@ -241,10 +241,12 @@
   gap: 6px;
 }
 
+/* The same size as the other dropdowns beside it (the category filter's trigger is 14px text with
+   8px / 10px padding), so a row of them reads as one set. The right padding leaves room for the chevron. */
 .sort-control select {
-  padding: 4px 28px 4px 8px; /* right side leaves room for the dropdown chevron */
-  background-position: right 9px center;
-  font-size: 13px;
+  padding: 8px 34px 8px 10px;
+  font-size: 14px;
+  width: auto;
 }
 
 /* --- lists index + list page --- */
