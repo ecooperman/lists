@@ -61,7 +61,19 @@ def update_list(
         if updates.hidden_priorities is None:
             raise HTTPException(status_code=400, detail="hidden_priorities must be a list of levels 1-5")
         if len(set(updates.hidden_priorities)) >= 5:
-            raise HTTPException(status_code=400, detail="Leave at least one priority level showing")
+            # Hiding every level switches priority off for the list, which only makes sense while
+            # no item has one (it would be a priority nobody can see or change).
+            n = crud.count_prioritised_items(db, member.list_id)
+            if n:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{n} {'item has' if n == 1 else 'items have'} a priority - clear {'it' if n == 1 else 'them'} "
+                    "before hiding every level",
+                )
+    hidden_after = set(updates.hidden_priorities) if "hidden_priorities" in sent else set(member.list.hidden_priorities)
+    all_hidden = len(hidden_after) >= 5
+    if updates.sort_mode == "priority" and all_hidden:
+        raise HTTPException(status_code=400, detail="Priority is switched off for this list (every level is hidden)")
     if updates.sort_mode == "price" and not (updates.track_costs if "track_costs" in sent else member.list.track_costs):
         raise HTTPException(status_code=400, detail="Turn on Track costs before sorting by price")
     if sent & OWNER_FIELDS:

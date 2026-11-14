@@ -63,7 +63,8 @@ const ItemCard = (function () {
     return [
       { key: "name", label: "Name", type: "text", required: true, requiredMessage: "Name is required.", get: (it) => it.name, toApi: (v) => v },
       { key: "recipient_id", label: "Who is it for?", type: "select", options: contactOptions, get: (it) => (it.recipient_id ? String(it.recipient_id) : ""), toApi: (v) => (v ? Number(v) : null) },
-      { key: "priority", label: "Priority", type: "select", options: priorityOptions, get: (it) => (it.priority ? String(it.priority) : ""), toApi: (v) => (v ? Number(v) : null) },
+      // With every level hidden priority is off for the list: no picker (unless this item still has one).
+      ...(ctx.list.hidden_priorities.length >= 5 && !(item && item.priority) ? [] : [{ key: "priority", label: "Priority", type: "select", options: priorityOptions, get: (it) => (it.priority ? String(it.priority) : ""), toApi: (v) => (v ? Number(v) : null) }]),
       { key: "list_id", label: "List", type: "select", options: listOptions, get: (it) => String(it.list_id), toApi: (v) => Number(v) },
       { key: "description", label: "Description", type: "textarea", get: (it) => it.description || "", toApi: (v) => v || null },
       { key: "links", label: "Links", custom: true },

@@ -56,7 +56,7 @@
       <div class="field">
         <label>Priority labels</label>
         <div id="priority-label-inputs" class="priority-label-inputs"></div>
-        <span class="field-hint">What this list calls priority levels 1 (lowest) to 5 (highest). Leave one blank to use its default. Untick Show to leave a level out of the priority choices (items already at it keep it); at least one must stay.</span>
+        <span class="field-hint">What this list calls priority levels 1 (lowest) to 5 (highest). Leave one blank to use its default. Untick Show to leave a level out of the priority choices (items already at it keep it). Untick all five to switch priority off for this list (only when no item has a priority).</span>
         <button type="button" id="reset-priority-labels" class="secondary-btn reset-labels-btn">Reset to defaults</button>
       </div>
       <div class="field">
@@ -109,7 +109,7 @@
           <option value="">Unassigned</option>
         </select>
       </div>
-      <div class="field">
+      <div class="field" id="new-priority-field">
         <label for="new-priority">Priority</label>
         <select id="new-priority" name="priority"></select>
       </div>
@@ -149,7 +149,7 @@
         <label class="sort-control">Sort
           <select id="sort-mode" aria-label="Sort items">
             <option value="manual">Manual</option>
-            <option value="priority">Priority</option>
+            <option value="priority" id="sort-priority-option">Priority</option>
             <option value="price" id="sort-price-option" hidden disabled>Price (highest first)</option>
           </select>
         </label>

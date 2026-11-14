@@ -17,15 +17,37 @@ def test_the_owner_can_hide_levels_and_the_choice_is_saved(alice):
     assert alice.patch(f"/api/lists/{lst['id']}", {"hidden_priorities": []}).json()["hidden_priorities"] == []
 
 
-def test_at_least_one_level_must_stay_visible(alice):
+def test_hiding_every_level_switches_priority_off_but_only_while_no_item_has_one(alice):
     lst = make_list(alice)
     url = f"/api/lists/{lst['id']}"
-    assert alice.patch(url, {"hidden_priorities": [1, 2, 3, 4, 5]}).status_code == 400
-    assert alice.patch(url, {"hidden_priorities": [1, 2, 3, 4]}).status_code == 200
+    item = make_item(alice, lst["id"], "Bed")
+    assert alice.patch(f"/api/items/{item['id']}", {"priority": 2}).status_code == 200
+    refused = alice.patch(url, {"hidden_priorities": [1, 2, 3, 4, 5]})
+    assert refused.status_code == 400 and "1 item has a priority" in refused.json()["detail"]
+    assert alice.get(url).json()["hidden_priorities"] == []  # nothing changed
+
+    assert alice.patch(f"/api/items/{item['id']}", {"priority": None}).status_code == 200
+    assert alice.patch(url, {"hidden_priorities": [1, 2, 3, 4, 5]}).json()["hidden_priorities"] == [1, 2, 3, 4, 5]
+
+
+def test_priority_sort_is_refused_and_reset_when_every_level_is_hidden(alice):
+    lst = make_list(alice)
+    url = f"/api/lists/{lst['id']}"
+    assert alice.patch(url, {"sort_mode": "priority"}).status_code == 200
+    # Hiding every level drops a list that was sorted by priority back to manual order...
+    assert alice.patch(url, {"hidden_priorities": [1, 2, 3, 4, 5]}).json()["sort_mode"] == "manual"
+    # ...and won't go back to priority while it is off.
+    assert alice.patch(url, {"sort_mode": "priority"}).status_code == 400
+    assert alice.patch(url, {"hidden_priorities": [1, 2]}).status_code == 200
+    assert alice.patch(url, {"sort_mode": "priority"}).status_code == 200
+
+
+def test_bad_hidden_priority_values_are_refused(alice):
+    lst = make_list(alice)
+    url = f"/api/lists/{lst['id']}"
     assert alice.patch(url, {"hidden_priorities": None}).status_code == 400
     assert alice.patch(url, {"hidden_priorities": [0]}).status_code == 422
     assert alice.patch(url, {"hidden_priorities": [6]}).status_code == 422
-    assert alice.get(url).json()["hidden_priorities"] == [1, 2, 3, 4]  # the bad ones changed nothing
 
 
 def test_only_the_owner_can_hide_levels(alice, bob):

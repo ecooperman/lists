@@ -521,6 +521,10 @@ def create_list(db: Session, user: models.User, item_list: schemas.ItemListCreat
     return list_view(db, get_membership(db, user.id, db_list.id))
 
 
+def count_prioritised_items(db: Session, list_id: int) -> int:
+    return db.query(func.count(models.Item.id)).filter(models.Item.list_id == list_id, models.Item.priority.isnot(None)).scalar()
+
+
 def update_list(db: Session, member: models.ListMember, list_fields: dict, member_fields: dict):
     """list_fields are the list's own (everyone sees them change);
     member_fields are this person's alone (their category)."""
@@ -528,6 +532,8 @@ def update_list(db: Session, member: models.ListMember, list_fields: dict, membe
         setattr(member.list, field, value)
     if not member.list.track_costs and member.list.sort_mode == "price":
         member.list.sort_mode = "manual"  # there are no prices to sort by any more
+    if len(member.list.hidden_priorities) >= 5 and member.list.sort_mode == "priority":
+        member.list.sort_mode = "manual"  # priority is switched off, so there is nothing to sort by
     for field, value in member_fields.items():
         setattr(member, field, value)
     db.commit()

@@ -478,3 +478,45 @@ def test_big_amounts_are_written_with_thousands_separators(alice):
     make_item(alice, lst["id"], "Bike", estimate_cents=99900)
     text = copy_list(alice, lst["id"], heading=False, prices=True)["text"]
     assert "Price: $12,345" in text and text.endswith("Total: $13,344")
+
+
+# --- the totals mirror the list's strip: by priority, and what is left out -------------------
+
+
+def prioritised_list(alice):
+    lst = make_list(alice, "Portland")
+    alice.patch(f"/api/lists/{lst['id']}", {"track_costs": True, "priority_labels": ["Want", "Need", "Required", "", ""]})
+    make_item(alice, lst["id"], "Bed", priority=3, estimate_cents=90_000)
+    make_item(alice, lst["id"], "Desk", priority=3, estimate_cents=30_000)
+    make_item(alice, lst["id"], "Lamp", priority=1, estimate_cents=4_500)
+    make_item(alice, lst["id"], "Rug", estimate_cents=3_000)
+    return lst
+
+
+def test_the_copy_total_is_split_by_priority_like_the_list(alice):
+    lst = prioritised_list(alice)
+    text = copy_list(alice, lst["id"], heading=False, prices=True)["text"]
+    assert text.endswith("\n\nRequired: $1,200\nWant: $45\nNo priority: $30\nTotal: $1,275")
+
+
+def test_the_html_copy_has_the_same_lines_with_a_bold_total(alice):
+    lst = prioritised_list(alice)
+    html = copy_list(alice, lst["id"], heading=False, prices=True)["html"]
+    assert html.endswith("<p>Required: $1,200<br>Want: $45<br>No priority: $30<br><strong>Total:</strong> $1,275</p>")
+
+
+def test_no_priority_lines_when_nothing_has_a_priority_or_prices_are_off(alice):
+    lst = priced_list(alice)  # no priorities
+    text = copy_list(alice, lst["id"], heading=False, prices=True)["text"]
+    assert text.endswith("\n\nTotal: $810.50 (1 without a price)") and "No priority" not in text
+    lst = prioritised_list(alice)
+    assert "Required" not in copy_list(alice, lst["id"], heading=False)["text"]
+
+
+def test_excluded_items_are_marked_and_left_out_of_every_line(alice):
+    lst = prioritised_list(alice)
+    desk = [i for i in alice.get(f"/api/lists/{lst['id']}/items").json() if i["name"] == "Desk"][0]
+    alice.patch(f"/api/items/{desk['id']}", {"exclude_from_totals": True})
+    text = copy_list(alice, lst["id"], heading=False, prices=True)["text"]
+    assert "Price: $300 (left out of the total)" in text
+    assert text.endswith("Required: $900\nWant: $45\nNo priority: $30\nTotal: $975 (1 left out)")

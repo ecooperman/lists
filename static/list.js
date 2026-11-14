@@ -86,6 +86,11 @@ function renderListHeader() {
   document.getElementById("list-locked").classList.toggle("hidden", !currentList.locked);
   const category = currentList.category_id ? categoriesById[currentList.category_id] : null;
   document.getElementById("list-category-slot").replaceChildren(...(category ? [categoryPill(category)] : []));
+  // Every level hidden = priority is switched off for this list: no picker, no priority sort.
+  const priorityOff = currentList.hidden_priorities.length >= 5;
+  document.getElementById("new-priority-field").classList.toggle("hidden", priorityOff);
+  const priorityOption = document.getElementById("sort-priority-option");
+  priorityOption.hidden = priorityOption.disabled = priorityOff;
   const priceOption = document.getElementById("sort-price-option");
   priceOption.hidden = priceOption.disabled = !currentList.track_costs;
   document.getElementById("sort-mode").value = currentList.sort_mode;

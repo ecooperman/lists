@@ -191,8 +191,8 @@ class ItemListUpdate(BaseModel):
     # Exactly five labels for priority levels 1-5; a blank one falls back to
     # its default, and null resets all five.
     priority_labels: Optional[List[PriorityLabel]] = Field(default=None, min_length=5, max_length=5)
-    # Levels (1-5) this list does not offer in its priority pickers; [] shows all five.
-    # At least one must stay visible (checked in the router, where the body's shape is known).
+    # Levels (1-5) this list does not offer in its priority pickers; [] shows all five. Hiding all
+    # five switches priority off for the list (allowed only while no item has one - checked in the router).
     hidden_priorities: Optional[List[Annotated[int, Field(ge=1, le=5)]]] = Field(default=None, max_length=5)
 
 
