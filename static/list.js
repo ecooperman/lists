@@ -479,6 +479,19 @@ function renderItems(items) {
   for (const item of items) {
     list.appendChild(ItemCard.create(item, itemCtx));
   }
+  syncToggleAll();
+}
+
+// --- expand / collapse all (see mountToggleAll in common.js) ---
+
+let syncToggleAll = () => {};
+
+function initToggleAll() {
+  syncToggleAll = mountToggleAll(document.getElementById("toggle-all"), {
+    container: document.getElementById("items-list"),
+    cards: () => [...document.querySelectorAll("#items-list > .item-card")],
+    toggleOf: (card) => card.querySelector(":scope > .item-summary .item-summary-zone") || card.querySelector(":scope > .item-summary"),
+  });
 }
 
 function initAddItemForm() {
@@ -595,6 +608,7 @@ async function init() {
   initSortMode();
   initSortable();
   initAddItemForm();
+  initToggleAll();
   try {
     await loadList();
   } catch (err) {

@@ -100,3 +100,39 @@ function parseMoney(text) {
   if (cents > 1_000_000_000) throw new Error("That amount is too large.");
   return cents;
 }
+
+// --- expand / collapse all ---
+//
+// One small button beside a page's count: it opens every card when any is closed, and closes them
+// all once every one is open; its words and arrow follow the state. Each card is opened by the
+// same click a person would make, so nothing about how a card opens is repeated here.
+//   button    the .expand-all-btn element (an icon span and a .expand-all-label span inside)
+//   cards()   the cards on the page right now (elements with the "expanded" class when open)
+//   toggleOf  the element to click to open or close a given card
+// Returns sync(): call it after the cards are (re)drawn. It also follows cards opened by hand.
+function mountToggleAll(button, { cards, toggleOf, container, minimum = 2 }) {
+  function sync() {
+    const all = cards();
+    button.classList.toggle("hidden", all.length < minimum);
+    const allOpen = all.length > 0 && all.every((card) => card.classList.contains("expanded"));
+    const label = allOpen ? "Collapse all" : "Expand all";
+    button.querySelector(".expand-all-label").textContent = label;
+    button.setAttribute("aria-label", label);
+    const icon = button.querySelector(".btn-icon");
+    icon.dataset.icon = allOpen ? "arrow-up" : "arrow-down";
+    applyIcons(button);
+  }
+  button.addEventListener("click", () => {
+    const all = cards();
+    const open = !all.every((card) => card.classList.contains("expanded"));
+    for (const card of all) {
+      if (card.classList.contains("expanded") !== open) toggleOf(card).click();
+    }
+    sync();
+  });
+  // A card opened or closed by hand changes what the button should offer.
+  const later = () => setTimeout(sync, 0);
+  container.addEventListener("click", later);
+  container.addEventListener("keydown", later);
+  return sync;
+}

@@ -32,6 +32,19 @@ let categoryFilter = loadPref("lists.categoryFilter", []); // category ids as st
 // What's on screen per list id, so a change to one list's items can update its
 // header count (and any other open list an item was moved into).
 const listViews = new Map();
+
+// The small "Expand all" button beside the count (see mountToggleAll in common.js). Opening a list
+// loads its items, so this loads them all.
+let syncToggleAll = () => {};
+
+function initToggleAll() {
+  syncToggleAll = mountToggleAll(document.getElementById("toggle-all"), {
+    container: document.getElementById("lists-list"),
+    cards: () => [...listViews.values()].map((view) => view.card),
+    toggleOf: (card) => card.querySelector(":scope > .item-summary .list-chevron-btn"),
+    minimum: 2,
+  });
+}
 let listsSortable = null; // the flat view's
 let groupSortables = []; // one per category group in the grouped view
 
@@ -122,6 +135,7 @@ function renderLists({ reopenId = null } = {}) {
   // is safe even with a filter on - a category's lists are all shown or all hidden.
   container.classList.toggle("no-reorder", !grouped && filtered);
   if (listsSortable) listsSortable.option("disabled", grouped || filtered);
+  syncToggleAll();
 }
 
 function buildCategoryFilter() {
@@ -631,6 +645,7 @@ function initAddListForm() {
 }
 
 initListControls();
+initToggleAll();
 initListsSortable();
 initAddListForm();
 loadLists().catch((err) => Global.showMessage(err.message, "error"));

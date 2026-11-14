@@ -507,6 +507,10 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
   `POST /api/items/{id}/scrape`. It can be re-run any time (e.g. after a
   transient failure) via "Re-fetch preview", and lives inside the expanded
   card alongside the scraped preview (if any).
+- **Expand all / Collapse all.** A small text button beside the count on the lists index ("All lists") and on a
+  list's page ("Items"): it opens every card when any is closed, and closes them all once every one is open (it hides
+  with fewer than two cards). Implemented once as `mountToggleAll` in `static/common.js`, which clicks each card's own
+  toggle, so opening works exactly as by hand. On the index, expanding all loads every list's items.
 - **Tracking costs.** A list's owner can tick "Track costs" in Edit list. Each item then has
   an *estimate* and a *final cost* (`estimate_cents`, `final_cents`: whole cents, the house
   money convention; both optional). An item counts at its final cost once that is entered,
