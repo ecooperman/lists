@@ -324,7 +324,7 @@ function initSendCopy() {
   showBtn.addEventListener("click", () => {
     box.classList.remove("hidden");
     showBtn.classList.add("hidden");
-    if (!panel) panel = SendCopy.mount(document.getElementById("send-copy-mount"), { listId, onClose: close });
+    if (!panel) panel = SendCopy.mount(document.getElementById("send-copy-mount"), { listId, onClose: close, tracksCosts: () => currentList.track_costs });
     panel.refresh();
   });
 }

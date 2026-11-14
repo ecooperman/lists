@@ -827,6 +827,10 @@ html[data-ui="v2"] .list-tools > button {
   gap: 6px;
 }
 
+.send-copy-check.hidden {
+  display: none;
+}
+
 .send-copy-choose {
   display: flex;
   flex-direction: column;

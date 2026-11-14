@@ -289,7 +289,7 @@ function listCardElement(itemList, { showPill = true, expanded = false } = {}) {
   function toggleCopy() {
     const open = copyBox.classList.toggle("hidden") === false;
     if (!open) return;
-    if (!copyPanel) copyPanel = SendCopy.mount(copyMount, { listId: itemList.id });
+    if (!copyPanel) copyPanel = SendCopy.mount(copyMount, { listId: itemList.id, tracksCosts: () => itemList.track_costs });
     copyPanel.refresh();
   }
 

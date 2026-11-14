@@ -517,7 +517,9 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
   price as a badge, and the lists index shows the total on the list's card. "Price (highest
   first)" becomes a sort option; turning tracking off puts a list sorted by price back to
   manual. Prices are kept (just not shown) when tracking is off or an item moves to a list that
-  doesn't track costs. Copies ("Send a copy") don't include prices yet.
+  doesn't track costs. "Send a copy" has a "Prices and total" option (lists that track costs only): each item gets a
+  `Price:` line and, when more than one item is copied, a closing `Total:` (with a note of how many have no price);
+  it works for the clipboard copy and the emailed one (`prices` in the copy options).
 - Every list shares the same item fields for now (including the gift-flavored
   "Who is it for?" / "Needed by"); per-list fields would be the next layer.
 

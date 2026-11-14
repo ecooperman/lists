@@ -13,6 +13,7 @@ const SendCopy = (function () {
     priority: false,
     progress: false,
     recipient: false,
+    prices: false,
     style: "bulleted",
     done: "show",
     order: "list",
@@ -26,6 +27,7 @@ const SendCopy = (function () {
     ["priority", "Priority"],
     ["progress", "Progress"],
     ["recipient", "Who it's for"],
+    ["prices", "Prices and total"],
     ["heading", "List name as a heading"],
   ];
 
@@ -105,17 +107,20 @@ const SendCopy = (function () {
   // The chooser for a whole list, built into `container`. Returns
   // { refresh() } - call it each time the panel is opened, since the list may
   // have changed since. onClose, if given, adds a Close button.
-  function mount(container, { listId, onClose }) {
+  function mount(container, { listId, onClose, tracksCosts = () => false }) {
     const choices = loadChoices(listId);
     const options = Global.el("div", { class: "send-copy-options" });
     const inputs = {};
 
+    let pricesRow = null;
     const include = Global.el("fieldset", { class: "send-copy-include" }, [Global.el("legend", { text: "Include" })]);
     for (const [key, label] of INCLUDE) {
       const box = Global.el("input", { type: "checkbox" });
       box.checked = !!choices[key];
       inputs[key] = box;
-      include.appendChild(Global.el("label", { class: "send-copy-check" }, [box, ` ${label}`]));
+      const row = Global.el("label", { class: "send-copy-check" }, [box, ` ${label}`]);
+      if (key === "prices") pricesRow = row; // only offered on a list that tracks costs
+      include.appendChild(row);
     }
     options.appendChild(include);
 
@@ -163,12 +168,14 @@ const SendCopy = (function () {
         const input = inputs[key];
         now[key] = input.type === "checkbox" ? input.checked : input.value;
       }
+      if (!tracksCosts()) now.prices = false;
       return now;
     }
 
     let result = null;
     let version = 0;
     async function refresh() {
+      pricesRow.classList.toggle("hidden", !tracksCosts());
       const now = current();
       saveChoices(listId, now);
       const mine = ++version;

@@ -23,6 +23,24 @@ def _date(value) -> str:
     return f"{value:%b} {value.day}, {value.year}"
 
 
+def _money(cents: int) -> str:
+    return f"${cents / 100:,.2f}"
+
+
+def _total_line(items: List[models.Item], options: schemas.CopyOptions) -> Optional[str]:
+    """The closing "Total: $1,234.50" of a copy that includes prices: what the items copied add up to,
+    each at its final cost or else its estimate. None when prices are off, only one item is copied, or
+    none of them has a price."""
+    if not options.prices or len(items) < 2:  # one item's own Price line already says it
+        return None
+    costs = [item.cost_cents for item in items]
+    if all(cost is None for cost in costs):
+        return None
+    missing = sum(1 for cost in costs if cost is None)
+    note = f" ({missing} without a price)" if missing else ""
+    return f"Total: {_money(sum(cost for cost in costs if cost is not None))}{note}"
+
+
 def _details(item: models.Item, options: schemas.CopyOptions, priority_labels: List[str]):
     """What to show under an item's name, in order, as (kind, label, value):
     "note" (free text), "link" (label may be None; value is the address) and
@@ -32,6 +50,8 @@ def _details(item: models.Item, options: schemas.CopyOptions, priority_labels: L
         rows.append(("note", None, item.description.strip()))
     if options.links:
         rows.extend(("link", link.label, link.url) for link in item.links)
+    if options.prices and item.cost_cents is not None:
+        rows.append(("field", "Price", _money(item.cost_cents)))
     if options.needed_by and item.needed_by:
         rows.append(("field", "Needed by", _date(item.needed_by)))
     if options.priority and item.priority:
@@ -80,6 +100,9 @@ def _text(title: Optional[str], items, options, priority_labels) -> str:
                 lines.append(f"{indent}{label}: {value}")
         blocks.append("\n".join(lines))
     body = ("\n\n" if spaced else "\n").join(blocks) if blocks else "(no items)"
+    total = _total_line(items, options)
+    if total:
+        body += f"\n\n{total}"
     return f"{title}\n\n{body}" if title else body
 
 
@@ -122,6 +145,10 @@ def _html(title: Optional[str], items, options, priority_labels) -> str:
     else:
         # Checkboxes carry their own symbol, and plain has none: no list markers.
         out.append("".join(f"<p>{block}</p>" for block in rendered))
+    total = _total_line(items, options)
+    if total:
+        label, _, rest = total.partition(": ")
+        out.append(f"<p><strong>{escape(label)}:</strong> {escape(rest)}</p>")
     return "".join(out)
 
 

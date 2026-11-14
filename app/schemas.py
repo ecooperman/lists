@@ -119,6 +119,7 @@ class CopyOptions(BaseModel):
     priority: bool = False
     progress: bool = False
     recipient: bool = False  # the contact's name only, never their email or address
+    prices: bool = False  # each item's price (final cost, else estimate) and a total line; lists that track costs
     style: Literal["numbered", "bulleted", "checkboxes", "plain"] = "bulleted"
     done: Literal["show", "hide", "strike"] = "show"
     order: Literal["list", "priority"] = "list"  # "list" = as the list itself shows them
