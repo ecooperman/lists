@@ -141,6 +141,8 @@ function renderLists({ reopenId = null } = {}) {
 function buildCategoryFilter() {
   const mount = document.getElementById("category-filter-mount");
   mount.replaceChildren();
+  // .has-filter lets the phone layout give the filter and Sort a second row of their own.
+  mount.closest(".list-controls").classList.toggle("has-filter", categories.length > 0);
   if (!categories.length) return; // nothing to filter by until a category exists
   mount.appendChild(
     Global.buildMultiSelect({

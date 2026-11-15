@@ -263,9 +263,21 @@
 /* --- phones: keep the "Items - N left - Expand all - Sort" row on one tidy line ---
    The Sort dropdown otherwise sizes itself to its longest option and "Expand all" is a long label for
    a small button, so the row overflowed. "Expand all" becomes just its icon (the button keeps its
-   aria-label and tooltip) and the dropdown gets a compact width. On a very narrow screen the row stacks
-   on purpose instead: title and count above, a full-width Sort below, lined up with the cards. */
+   aria-label and tooltip) and the dropdown gets a compact width.
+   The lists index also has a category filter beside Sort once any category exists (lists.js adds
+   .has-filter to .list-controls then); the two dropdowns can't share the title's row, so they drop to a
+   second row of their own, split evenly and lined up with the cards. On a very narrow screen the Items
+   page's Sort drops to its own full-width row too, and the index's two dropdowns stack. */
 @media (max-width: 520px) {
+  .list-header {
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+
+  .list-header h2 {
+    white-space: nowrap;
+  }
+
   .list-header .expand-all-label {
     display: none;
   }
@@ -279,20 +291,40 @@
     height: 15px;
   }
 
-  .list-header {
-    margin-bottom: 6px;
-  }
-
   .list-header .sort-control select {
     width: 8.25rem;
+  }
+
+  .list-controls.has-filter {
+    flex: 1 1 100%;
+    margin-left: 0;
+    margin-bottom: 8px;
+    gap: 8px;
+  }
+
+  .list-controls.has-filter #category-filter-mount,
+  .list-controls.has-filter .sort-control {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .list-controls.has-filter .multiselect {
+    display: block;
+  }
+
+  .list-controls.has-filter .multiselect-trigger {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .list-controls.has-filter .sort-control select {
+    flex: 1;
+    min-width: 0;
+    width: auto;
   }
 }
 
 @media (max-width: 369px) {
-  .list-header {
-    flex-wrap: wrap;
-  }
-
   .list-header .sort-control {
     flex: 1 1 100%;
     margin-left: 0;
@@ -302,6 +334,18 @@
   .list-header .sort-control select {
     flex: 1;
     width: auto;
+  }
+
+  .list-controls.has-filter {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .list-controls.has-filter #category-filter-mount,
+  .list-controls.has-filter .sort-control {
+    flex: none;
+    margin-bottom: 0;
   }
 }
 
