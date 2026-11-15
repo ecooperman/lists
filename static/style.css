@@ -260,6 +260,51 @@
   width: auto;
 }
 
+/* --- phones: keep the "Items - N left - Expand all - Sort" row on one tidy line ---
+   The Sort dropdown otherwise sizes itself to its longest option and "Expand all" is a long label for
+   a small button, so the row overflowed. "Expand all" becomes just its icon (the button keeps its
+   aria-label and tooltip) and the dropdown gets a compact width. On a very narrow screen the row stacks
+   on purpose instead: title and count above, a full-width Sort below, lined up with the cards. */
+@media (max-width: 520px) {
+  .list-header .expand-all-label {
+    display: none;
+  }
+
+  .list-header .expand-all-btn {
+    padding: 6px 8px;
+  }
+
+  .list-header .expand-all-btn .btn-icon svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .list-header {
+    margin-bottom: 6px;
+  }
+
+  .list-header .sort-control select {
+    width: 8.25rem;
+  }
+}
+
+@media (max-width: 369px) {
+  .list-header {
+    flex-wrap: wrap;
+  }
+
+  .list-header .sort-control {
+    flex: 1 1 100%;
+    margin-left: 0;
+    margin-bottom: 8px;
+  }
+
+  .list-header .sort-control select {
+    flex: 1;
+    width: auto;
+  }
+}
+
 /* --- lists index + list page --- */
 
 .list-summary-text {

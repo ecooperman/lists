@@ -31,7 +31,8 @@ function buildListsNav(me) {
   }
   if (admin) items.push({ href: "/users.html", icon: "person", label: "Users", active: here("/users.html"), group: "Access" });
   items.push({ icon: "refresh", label: "Refresh", onclick: () => location.reload() });
-  Global.buildNav(items);
+  // On a phone only the first three stay on the bottom bar; the rest sit behind a More tab.
+  Global.buildNav(items, "app-nav-mount", { barItems: 3 });
 }
 
 buildListsNav(null);

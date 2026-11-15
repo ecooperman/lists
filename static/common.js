@@ -118,6 +118,7 @@ function mountToggleAll(button, { cards, toggleOf, container, minimum = 2 }) {
     const label = allOpen ? "Collapse all" : "Expand all";
     button.querySelector(".expand-all-label").textContent = label;
     button.setAttribute("aria-label", label);
+    button.title = label; // the text label is hidden on a phone, so the tooltip carries it
     const icon = button.querySelector(".btn-icon");
     icon.dataset.icon = allOpen ? "arrow-up" : "arrow-down";
     applyIcons(button);
