@@ -51,6 +51,9 @@ class Me(BaseModel):
     invites_left: Optional[int] = None
     # Requests waiting for approval (administrators only, else 0).
     pending_invites: int = 0
+    # Where this person's Log out link goes when they signed in through the app's own sign-in
+    # (null = the Cloudflare Access one, the page's default).
+    logout_url: Optional[str] = None
 
 
 class AdminUser(BaseModel):

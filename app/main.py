@@ -2,11 +2,12 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from shared_python import oidc_login
 from sqlalchemy.orm import Session
 
 from . import crud
 from .auth import NO_ACCESS, is_admin, signed_in_email
-from .config import SHARED_ASSETS_BASE
+from .config import DEV_USER_EMAIL, SHARED_ASSETS_BASE
 from .deps import get_db
 from .routers import categories, contacts, invites, items, link_labels, lists, me, users
 
@@ -25,6 +26,10 @@ def _page(request: Request, db: Session, name: str, admin_only: bool = False):
     likeliest cause is being signed in with the wrong address.
     shared_assets_base is baked in server-side (no client-side fetch, no flash
     of unstyled content) - see config.py's SHARED_ASSETS_BASE."""
+    # Signed out (and the app does its own sign-in): to the provider's login page and back here.
+    redirect = oidc_login.redirect_if_signed_out(request, DEV_USER_EMAIL)
+    if redirect is not None:
+        return redirect
     email = signed_in_email(request)
     user, problem = crud.user_for_request(db, email)
     if user is None:
@@ -94,6 +99,7 @@ def link_labels_page(request: Request, db: Session = Depends(get_db)):
     return _page(request, db, "link-labels.html")
 
 
+app.include_router(oidc_login.router)  # /auth/login, /auth/callback, /auth/logout (404 until configured)
 app.include_router(me.router)
 app.include_router(lists.router)
 app.include_router(invites.router)
