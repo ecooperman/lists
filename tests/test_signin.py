@@ -75,3 +75,53 @@ def test_the_log_out_link_stays_cloudflares_for_cloudflare_visitors(client, own_
 
 def test_with_no_own_sign_in_configured_the_link_is_the_default(client, alice):
     assert client.get("/api/me", headers=alice.headers).json()["logout_url"] is None
+
+
+# --- through the shared front door (the dashboard): this app only checks the cookie ---------------------
+
+FRONT = "https://dashboard.example.org"
+
+
+@pytest.fixture()
+def verify_only(monkeypatch, key):
+    """No client id or secret here: only the issuer, the audience and where the front door is."""
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(settings, "OIDC_ISSUER", ISSUER)
+    monkeypatch.setattr(settings, "OIDC_AUDIENCE", CLIENT)
+    monkeypatch.setattr(settings, "OIDC_LOGIN_URL", FRONT + "/auth/login")
+    monkeypatch.setattr(shared_auth, "_oidc_signing_key", lambda _token: key.public_key())
+
+
+def test_a_signed_out_visitor_goes_to_the_front_door_and_comes_back_to_this_page(client, verify_only):
+    resp = client.get("/list.html?id=2", headers={"host": "lists.example.org"}, follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"].startswith(FRONT + "/auth/login?next=")
+    assert "https%3A%2F%2Flists.example.org%2Flist.html%3Fid%3D2" in resp.headers["location"]
+
+
+def test_the_api_stays_a_401_for_a_signed_out_visitor(client, verify_only):
+    assert client.get("/api/me", follow_redirects=False).status_code == 401
+
+
+def test_the_shared_cookie_signs_a_person_in_here(client, verify_only, key, alice):
+    client.cookies.set("oidc_session", id_token(key, alice.email))
+    assert client.get("/", follow_redirects=False).status_code == 200
+    me = client.get("/api/me").json()
+    assert me["email"] == alice.email and me["logout_url"] == FRONT + "/auth/logout"
+
+
+def test_there_are_no_sign_in_routes_here_only_at_the_front_door(client, verify_only):
+    for path in ("/auth/login", "/auth/callback", "/auth/logout"):
+        assert client.get(path, follow_redirects=False).status_code == 404
+
+
+def test_the_no_access_page_logs_out_through_the_front_door(client, verify_only, key):
+    client.cookies.set("oidc_session", id_token(key, "stranger@example.com"))
+    resp = client.get("/", follow_redirects=False)
+    assert resp.status_code == 403 and f'href="{FRONT}/auth/logout"' in resp.text
+
+
+def test_the_no_access_page_still_logs_out_through_cloudflare_by_default(client, sign_in):
+    sign_in("stranger@example.com", enabled=False)
+    resp = client.get("/", headers={"Cf-Access-Authenticated-User-Email": "stranger@example.com"}, follow_redirects=False)
+    assert resp.status_code == 403 and 'href="/cdn-cgi/access/logout"' in resp.text

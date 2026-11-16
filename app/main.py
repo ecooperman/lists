@@ -42,7 +42,10 @@ def _page(request: Request, db: Session, name: str, admin_only: bool = False):
     return templates.TemplateResponse(
         request,
         "no_access.html",
-        {"shared_assets_base": SHARED_ASSETS_BASE, "heading": heading, "message": message, "email": email},
+        {
+            "shared_assets_base": SHARED_ASSETS_BASE, "heading": heading, "message": message, "email": email,
+            "logout_url": oidc_login.logout_url(request) or "/cdn-cgi/access/logout",
+        },
         status_code=403,
     )
 
