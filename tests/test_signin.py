@@ -125,3 +125,31 @@ def test_the_no_access_page_still_logs_out_through_cloudflare_by_default(client,
     sign_in("stranger@example.com", enabled=False)
     resp = client.get("/", headers={"Cf-Access-Authenticated-User-Email": "stranger@example.com"}, follow_redirects=False)
     assert resp.status_code == 403 and 'href="/cdn-cgi/access/logout"' in resp.text
+
+
+def test_no_route_answers_with_data_when_nobody_is_signed_in(client, verify_only):
+    """The guard for taking the Cloudflare login off this hostname: with no sign-in at all, every route in the
+    app is refused (the API) or sends the visitor to sign in (the pages). A route added later without its sign-in
+    check fails here before it can go live."""
+    import re
+
+    from app.main import app
+
+    pages = ["/", "/list.html", "/categories.html", "/invites.html", "/users.html", "/contacts.html", "/link-labels.html"]
+    answered = []
+    for shown, operations in app.openapi()["paths"].items():
+        path = re.sub(r"\{[^}]+\}", "1", shown)
+        if path in pages:
+            continue  # the pages are checked below
+        for method in operations:
+            if method.upper() in ("HEAD", "OPTIONS"):
+                continue
+            body = {"json": {}} if method.upper() in ("POST", "PUT", "PATCH") else {}
+            resp = client.request(method.upper(), path, follow_redirects=False, **body)
+            if resp.status_code not in (401, 403, 404, 405, 503) and not (resp.status_code == 200 and path == "/api/version"):
+                answered.append((method.upper(), shown, resp.status_code))
+    for page in pages:
+        resp = client.get(page, follow_redirects=False)
+        if resp.status_code != 302:
+            answered.append(("GET", page, resp.status_code))
+    assert not answered, f"answered without a sign-in: {answered}"
