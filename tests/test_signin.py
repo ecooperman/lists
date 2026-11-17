@@ -121,10 +121,26 @@ def test_the_no_access_page_logs_out_through_the_front_door(client, verify_only,
     assert resp.status_code == 403 and f'href="{FRONT}/auth/logout"' in resp.text
 
 
+def test_someone_with_no_account_is_pointed_at_the_dashboard_to_ask_for_one(client, verify_only, key):
+    client.cookies.set("oidc_session", id_token(key, "stranger@example.com"))
+    resp = client.get("/", follow_redirects=False)
+    assert resp.status_code == 403 and f'href="{FRONT}/"' in resp.text and "Ask for access" in resp.text
+
+
+def test_someone_whose_access_was_removed_is_not_sent_to_ask_again(client, admin, alice, request, key):
+    rows = admin.get("/api/admin/users").json()
+    admin.post(f"/api/admin/users/{next(r['id'] for r in rows if r['email'] == alice.email)}/revoke")
+    request.getfixturevalue("verify_only")  # production sign-in from here on (the admin headers above are Cloudflare's)
+    client.cookies.set("oidc_session", id_token(key, alice.email))
+    resp = client.get("/", follow_redirects=False)
+    assert resp.status_code == 403 and "Your access was removed" in resp.text and "Ask for access" not in resp.text
+
+
 def test_the_no_access_page_still_logs_out_through_cloudflare_by_default(client, sign_in):
     sign_in("stranger@example.com", enabled=False)
     resp = client.get("/", headers={"Cf-Access-Authenticated-User-Email": "stranger@example.com"}, follow_redirects=False)
     assert resp.status_code == 403 and 'href="/cdn-cgi/access/logout"' in resp.text
+    assert "Ask for access" not in resp.text  # no dashboard in front of this app: nowhere to send them
 
 
 def test_no_route_answers_with_data_when_nobody_is_signed_in(client, verify_only):
