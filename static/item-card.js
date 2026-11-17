@@ -221,13 +221,24 @@ const ItemCard = (function () {
     const primary = item.links && item.links.length ? item.links[0] : null;
     const domain = primary ? Global.domainFromUrl(primary.url) : null;
     if (domain) {
-      const domainLink = Global.el("a", {
-        class: "item-badge item-badge-domain",
-        href: primary.url,
-        target: "_blank",
-        rel: "noopener noreferrer",
-        text: domain,
-      });
+      // On a wide screen the badge reads as the site's name; on a phone there is no room for a name, so the same link
+      // becomes a small icon (see style.css), still one tap from the row.
+      const domainLink = Global.el(
+        "a",
+        {
+          class: "item-badge item-badge-domain",
+          href: primary.url,
+          target: "_blank",
+          rel: "noopener noreferrer",
+          title: `Open ${domain}`,
+          "aria-label": `Open ${domain}`,
+        },
+        [
+          Global.el("span", { class: "btn-icon domain-icon", "data-icon": "external", "aria-hidden": "true" }),
+          Global.el("span", { class: "domain-text", text: domain }),
+        ]
+      );
+      applyIcons(domainLink);
       // Opening the source link shouldn't also toggle the accordion.
       domainLink.addEventListener("click", (e) => e.stopPropagation());
       domainLink.addEventListener("keydown", (e) => e.stopPropagation());
@@ -838,7 +849,22 @@ const ItemCard = (function () {
           }
         });
         row._focusUrl = () => urlInput.focus();
-        row.append(handle, select, urlInput, removeBtn);
+        // The same "open this link" button the mouse version has: on a phone the address is only an input, so without it
+        // there is no way to open a saved link. Shown only while the box holds a real web address.
+        const openLink = Global.el("a", { class: "link-open", target: "_blank", rel: "noopener noreferrer", title: "Open this link", "aria-label": "Open this link" }, [
+          Global.el("span", { class: "btn-icon", "data-icon": "external", "aria-hidden": "true" }),
+        ]);
+        applyIcons(openLink);
+        const showOpen = () => {
+          const address = urlInput.value.trim();
+          const ok = WEB_ADDRESS.test(address);
+          if (ok) openLink.setAttribute("href", address);
+          else openLink.removeAttribute("href");
+          openLink.classList.toggle("hidden", !ok);
+        };
+        showOpen();
+        urlInput.addEventListener("input", showOpen);
+        row.append(handle, select, openLink, urlInput, removeBtn);
       }
 
       removeBtn.addEventListener("click", async () => {
