@@ -369,7 +369,7 @@ def test_suggestions_are_everyone_from_any_app_minus_people_already_here(admin, 
     resp = admin.get(f"{URL}/suggestions")
     assert resp.status_code == 200
     # alice and the administrator already have access here, so they are not offered again; the rest are lowercased and sorted
-    assert resp.json() == ["amy@example.com", "zed@example.com"]
+    assert [x["email"] for x in resp.json()] == ["amy@example.com", "zed@example.com"]
 
 
 def test_suggestions_say_who_uses_the_apps_so_only_the_administrator_gets_them(alice, tmp_path, monkeypatch):
@@ -382,4 +382,16 @@ def test_suggestions_say_who_uses_the_apps_so_only_the_administrator_gets_them(a
 def test_a_removed_person_is_offered_again_if_another_app_knows_them(admin, alice, tmp_path, monkeypatch):
     fake_apps(tmp_path, monkeypatch, lists=("gifts.db", [alice.email]))
     admin.post(f"{URL}/{user_id(admin, alice.email)}/revoke")
-    assert admin.get(f"{URL}/suggestions").json() == [alice.email]
+    assert [x["email"] for x in admin.get(f"{URL}/suggestions").json()] == [alice.email]
+
+
+def test_suggestions_carry_the_names_the_dashboard_has(admin, tmp_path, monkeypatch):
+    fake_apps(tmp_path, monkeypatch, finances=("finances.db", ["ann@example.com", "bob@example.com"]))
+    (tmp_path / "dashboard").mkdir()
+    connection = sqlite3.connect(tmp_path / "dashboard" / "people.db")
+    connection.execute("CREATE TABLE names (email TEXT PRIMARY KEY, first_name TEXT, last_name TEXT)")
+    connection.execute("INSERT INTO names VALUES ('ann@example.com', 'Ann', 'Lee')")
+    connection.commit()
+    connection.close()
+    assert admin.get(f"{URL}/suggestions").json() == [
+        {"email": "ann@example.com", "name": "Ann Lee"}, {"email": "bob@example.com", "name": ""}]
