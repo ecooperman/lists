@@ -120,6 +120,7 @@ async function load() {
     "data-form-type": "other",
     "aria-label": "Email address of someone to let into Lists",
   });
+  const refreshSuggestions = Global.suggestEmails(input, "/api/admin/users/suggestions");
   const button = Global.el("button", { type: "button", class: "secondary-btn", text: "Add" });
   const problem = Global.el("p", { class: "field-hint is-error hidden" });
   addEl.replaceChildren(Global.el("div", { class: "member-add" }, [input, button]), problem);
@@ -140,6 +141,7 @@ async function load() {
         body: JSON.stringify({ email }),
       });
       input.value = "";
+      refreshSuggestions();
       Global.showMessage(`${user.email} can now sign in to Lists.`, "success");
       load();
     } catch (err) {
