@@ -10,7 +10,7 @@ from . import crud
 from .auth import NO_ACCESS, is_admin, signed_in_email
 from .config import DEV_USER_EMAIL, SHARED_ASSETS_BASE
 from .deps import get_db
-from .routers import categories, contacts, invites, items, link_labels, lists, me, users
+from .routers import categories, contacts, invites, items, link_labels, lists, me, stats, users
 
 # Schema is owned by Alembic migrations (see migrations/) - run
 # `alembic upgrade head` before starting the app rather than relying on
@@ -113,6 +113,7 @@ app.include_router(lists.router)
 app.include_router(invites.router)
 app.include_router(invites.app_router)
 app.include_router(users.router)
+app.include_router(stats.router)
 app.include_router(items.router)
 app.include_router(contacts.router)
 app.include_router(categories.router)
