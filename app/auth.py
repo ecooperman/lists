@@ -41,7 +41,7 @@ def signed_in_email(request: Request) -> str:
 
 
 # When each person was last here, for the dashboard's stats pages (shared_python.usage): at most one small write an hour per person.
-seen = usage.LastSeen(lambda: SessionLocal())
+seen = usage.LastSeen(lambda: SessionLocal(), app="lists")
 
 
 def current_user(request: Request, db: Session = Depends(get_db)) -> models.User:

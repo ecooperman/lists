@@ -38,3 +38,16 @@ def test_the_dashboards_account_check_is_not_the_person_being_here(alice, db):
     assert alice.get("/api/me").status_code == 200
     db.expire_all()
     assert db.query(models.User).filter(models.User.email == "alice@example.com").one().active_days == 1  # but the person is
+
+
+def test_a_persons_first_visit_of_the_day_is_reported_to_the_dashboard_as_lists(alice, monkeypatch):
+    """So the Usage page's daily chart has a count for Lists (shared_python.usage.LastSeen(app=...))."""
+    from shared_python import settings, usage
+
+    told = []
+    monkeypatch.setattr(settings, "DASHBOARD_API_BASE", "http://127.0.0.1:8090")
+    monkeypatch.setattr(usage, "_send_active_day", lambda app, email, day: told.append((app, email, day)))
+    monkeypatch.setattr(usage.threading, "Thread", lambda target, args, daemon: type("T", (), {"start": lambda self: target(*args)})())
+    assert alice.get("/api/lists").status_code == 200
+    assert alice.get("/api/lists").status_code == 200
+    assert [(app, email) for app, email, _day in told] == [("lists", "alice@example.com")]  # once, not per request
