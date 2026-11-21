@@ -322,3 +322,9 @@ class CopyEmail(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     sent_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+# Tell the dashboard when someone's access to this app changes (shared_python.access_events), so every menu's list of apps follows.
+from shared_python import access_events  # noqa: E402
+
+access_events.install(User)

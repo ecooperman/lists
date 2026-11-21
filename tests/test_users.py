@@ -395,3 +395,15 @@ def test_suggestions_carry_the_names_the_dashboard_has(admin, tmp_path, monkeypa
     connection.close()
     assert admin.get(f"{URL}/suggestions").json() == [
         {"email": "ann@example.com", "name": "Ann Lee"}, {"email": "bob@example.com", "name": ""}]
+
+
+def test_removing_and_restoring_a_person_tells_the_dashboard(admin, alice, monkeypatch):
+    """So their menu's list of apps follows at once (shared_python.access_events)."""
+    from shared_python import access_events
+
+    told = []
+    monkeypatch.setattr(access_events, "_tell", lambda emails: told.extend(emails))
+    row = admin.post(f"{URL}/{user_id(admin, alice.email)}/revoke").json()
+    assert told == [alice.email]
+    admin.post(f"{URL}/{row['id']}/restore")
+    assert told == [alice.email, alice.email]
