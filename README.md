@@ -65,8 +65,9 @@ pre-accounts data). `GET /api/me` says who you are.
   list's own page, or with the **Share** button inside the list's expanded card on the
   lists page - both mount the same component (shared-assets' `access.js`, shared with
   trip-planning), so they behave identically and errors show right under the email box.
-  The box suggests addresses from `GET /api/me/people`: only people you already share
-  with or asked for, never everyone with an account
+  The box suggests people from `GET /api/me/people` for an administrator only (everyone with an account in any app, with the
+  name the dashboard has for them); an ordinary person gets no suggestions and types the whole address, since suggestions would
+  show who else uses the apps
   (`GET/POST /api/lists/{id}/members`, `PATCH/DELETE .../members/{user_id}`).
   Only someone who can use the app *right now* can be added: they need an active
   account here, and Cloudflare is asked (read-only) that they are still in the
