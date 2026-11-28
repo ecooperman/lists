@@ -180,7 +180,7 @@ class ItemListCreate(ItemListBase):
     pass
 
 
-SortMode = Literal["manual", "priority", "price"]
+SortMode = Literal["manual", "priority", "price", "recipient", "recipient_desc"]
 PriorityLabel = Annotated[str, StringConstraints(max_length=30)]
 
 

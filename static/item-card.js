@@ -20,6 +20,11 @@ const ItemCard = (function () {
   const ITEMS_API = "/api/items";
   const LINK_LABELS_API = "/api/link-labels";
 
+  // Sorted by who the item is for (A-Z or Z-A): changing the recipient moves the item.
+  function sortedByRecipient(ctx) {
+    return ctx.list.sort_mode === "recipient" || ctx.list.sort_mode === "recipient_desc";
+  }
+
   function contactName(contact) {
     if (!contact) return null;
     return [contact.first_name, contact.last_name].filter(Boolean).join(" ");
@@ -478,6 +483,10 @@ const ItemCard = (function () {
               ctx.reload();
               return def.get(updated);
             }
+            if (def.key === "recipient_id" && sortedByRecipient(ctx)) {
+              ctx.reload(); // the recipient decides the order in this mode
+              return def.get(updated);
+            }
             if (def.cost) {
               // A price changes the list's totals (and the order, when sorted by price).
               if (ctx.list.sort_mode === "price") {
@@ -525,7 +534,7 @@ const ItemCard = (function () {
               return;
             }
             Global.showMessage(`Saved "${name}".`, "success");
-            if (ctx.list.sort_mode === "price") {
+            if (ctx.list.sort_mode === "price" || (updated.recipient_id !== item.recipient_id && sortedByRecipient(ctx))) {
               ctx.reload();
               return;
             }

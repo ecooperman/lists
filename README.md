@@ -171,7 +171,7 @@ who may do what):
 - `GET /api/lists/{id}` - fetch one list
 - `PATCH /api/lists/{id}` - update `name` / `purpose` / `locked` / `category_id`
   (`null` clears it), plus
-  `sort_mode` (`manual`, `priority`, or `price` on a list that tracks costs), `track_costs`
+  `sort_mode` (`manual`, `priority`, `recipient` / `recipient_desc`, or `price` on a list that tracks costs), `track_costs`
   (owner only; see "Tracking costs" in Notes) and `priority_labels` (exactly five
   names for priority levels 1-5; a blank one falls back to its default, `null`
   resets all five). Every list response carries `priority_labels` fully
@@ -195,7 +195,9 @@ who may do what):
 - `GET /api/lists/{id}/items` - the list's items, not-done first, then by the
   list's `sort_mode`: `manual` (the drag order, default), `priority`
   (highest first, items with no priority last, ties in manual order) or `price`
-  (dearest first, unpriced last)
+  (dearest first, unpriced last) or `recipient` / `recipient_desc` (by the name of the
+  person it is for, A-Z or Z-A: first name, then last, ignoring case; items for nobody
+  last either way, ties in manual order)
 - `POST /api/lists/{id}/items` - add an item to the end of the list (`name` is
   the only required field)
 - `PUT /api/lists/{id}/items/order` - body `{"item_ids": [...]}`; saves that

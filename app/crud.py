@@ -851,10 +851,17 @@ def get_items(db: Session, list_id: int):
         order.append(models.Item.priority.desc().nulls_last())
     elif sort_mode == "price":
         order.append(func.coalesce(models.Item.final_cents, models.Item.estimate_cents).desc().nulls_last())
+    query = db.query(models.Item)
+    if sort_mode in ("recipient", "recipient_desc"):
+        # By the name of the person it is for (first name, then last), A-Z or Z-A; items for
+        # nobody go last either way. Ties stay in manual order.
+        query = query.outerjoin(models.Contact, models.Item.recipient_id == models.Contact.id)
+        names = [func.lower(models.Contact.first_name), func.lower(func.coalesce(models.Contact.last_name, ""))]
+        order.append(models.Item.recipient_id.is_(None))
+        order += [n.desc() if sort_mode == "recipient_desc" else n.asc() for n in names]
     order += [models.Item.sort_order, models.Item.id]
     return (
-        db.query(models.Item)
-        .options(joinedload(models.Item.recipient), selectinload(models.Item.links))
+        query.options(joinedload(models.Item.recipient), selectinload(models.Item.links))
         .filter(models.Item.list_id == list_id)
         .order_by(*order)
         .all()

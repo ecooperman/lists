@@ -76,7 +76,7 @@ def update_list(
 ):
     sent = updates.model_fields_set
     if "sort_mode" in sent and updates.sort_mode is None:
-        raise HTTPException(status_code=400, detail="sort_mode must be manual, priority or price")
+        raise HTTPException(status_code=400, detail="sort_mode must be manual, priority, price, recipient or recipient_desc")
     if "track_costs" in sent and updates.track_costs is None:
         raise HTTPException(status_code=400, detail="track_costs must be true or false")
     if "hidden_priorities" in sent:
