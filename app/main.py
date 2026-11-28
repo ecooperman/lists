@@ -2,7 +2,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from shared_python import auth as shared_auth
+from shared_python import auth as shared_auth, pages
 from shared_python import csrf, feedback_relay, oidc_login
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ app = FastAPI(title="Lists")
 csrf.install(app)  # a change must come from this app's own pages, not another app or site (shared_python.csrf)
 shared_auth.warm_up_on_start(app)  # fetch the sign-in keys in the background at start-up, so nobody's first page waits for them
 templates = Jinja2Templates(directory="templates")
+pages.install(templates)
 
 
 def _page(request: Request, db: Session, name: str, admin_only: bool = False):
