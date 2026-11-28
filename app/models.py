@@ -62,7 +62,7 @@ class Contact(Base):
     __tablename__ = "contacts"
 
     id = Column(Integer, primary_key=True)
-    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=True)
     email = Column(String, nullable=True)
@@ -100,7 +100,7 @@ class ItemList(Base):
     __tablename__ = "lists"
 
     id = Column(Integer, primary_key=True)
-    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String, nullable=False)
     purpose = Column(String, nullable=True)
     # A locked list can't be deleted until it's unlocked (see crud.delete_list).
@@ -167,7 +167,7 @@ class ListMember(Base):
     __tablename__ = "list_members"
 
     list_id = Column(Integer, ForeignKey("lists.id"), primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True, index=True)
     role = Column(String, nullable=False)
     # Manual position on this person's lists index, lower first (see
     # crud.reorder_lists). New lists go to the end.
@@ -220,8 +220,8 @@ class Item(Base):
     __tablename__ = "items"
 
     id = Column(Integer, primary_key=True)
-    list_id = Column(Integer, ForeignKey("lists.id"), nullable=False)
-    recipient_id = Column(Integer, ForeignKey("contacts.id"), nullable=True)
+    list_id = Column(Integer, ForeignKey("lists.id"), nullable=False, index=True)
+    recipient_id = Column(Integer, ForeignKey("contacts.id"), nullable=True, index=True)
     name = Column(String, nullable=False)
     description = Column(String, nullable=True)
     needed_by = Column(DateTime, nullable=True)
