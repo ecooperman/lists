@@ -3,7 +3,7 @@
 <head>
   {% include "shared_head.html" %}
   <title>Link Labels - Lists</title>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="{{ asset('style.css') }}" />
   <!-- Drag-to-reorder; same pinned CDN build the list pages use. -->
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 </head>
@@ -28,10 +28,10 @@
     <p class="field-hint">Renaming or deleting a label doesn't change links that already use it: each link keeps the words it was given, and everyone a list is shared with sees those words.</p>
   </main>
 
-  <script src="{{ shared_assets_base }}/theme.js"></script>
-  <script src="{{ shared_assets_base }}/icons.js"></script>
-  <script src="/nav.js"></script>
-  <script src="/common.js"></script>
-  <script src="/link-labels.js"></script>
+  <script src="{{ shared_asset('theme.js') }}"></script>
+  <script src="{{ shared_asset('icons.js') }}"></script>
+  <script src="{{ asset('nav.js') }}"></script>
+  <script src="{{ asset('common.js') }}"></script>
+  <script src="{{ asset('link-labels.js') }}"></script>
 </body>
 </html>
